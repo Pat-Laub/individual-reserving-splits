@@ -117,6 +117,16 @@ function generateSmartTicks(start, end, maxTicks = 10) {
 
 // Quarterly aggregation helpers
 function getQuarterInfo(date, referenceDate) {
+  // Validate inputs
+  if (!date || !referenceDate || isNaN(date.getTime()) || isNaN(referenceDate.getTime())) {
+    return {
+      calendarYear: 2020,
+      calendarQuarter: 1,
+      developmentQuarter: 0,
+      quarterKey: '2020Q1'
+    };
+  }
+
   const refYear = referenceDate.getUTCFullYear();
   const refQuarter = Math.floor(referenceDate.getUTCMonth() / 3);
 
@@ -125,15 +135,37 @@ function getQuarterInfo(date, referenceDate) {
 
   const quartersSinceRef = (dateYear - refYear) * 4 + (dateQuarter - refQuarter);
 
+  // Clamp to reasonable range
+  const clampedQuarters = Math.max(-50, Math.min(50, quartersSinceRef));
+
   return {
     calendarYear: dateYear,
     calendarQuarter: dateQuarter + 1,
-    developmentQuarter: quartersSinceRef, // 0-based by default
+    developmentQuarter: clampedQuarters, // 0-based by default
     quarterKey: `${dateYear}Q${dateQuarter + 1}`
   };
 }
 
 function aggregateClaimToQuarters(claim, oneBasedDevQuarters = false) {
+  // Validate claim object
+  if (!claim || !claim.accident || !claim.notify || !claim.settlement || !claim.staticCovariates || !claim.payments) {
+    return {
+      claimInfo: {
+        claimId: 'INVALID',
+        Legal_Representation: 'N',
+        Injury_Severity: '1',
+        Age_of_Claimant: 'Unknown',
+        accidentDate: new Date(),
+        notifyDate: new Date(),
+        settlementDate: new Date(),
+        accidentQuarter: '2020Q1',
+        notifyQuarter: '2020Q1',
+        notifyLag: 0
+      },
+      quarters: []
+    };
+  }
+
   const accidentQuarter = getQuarterInfo(claim.accident, claim.accident);
   const notifyQuarter = getQuarterInfo(claim.notify, claim.accident);
   const settlementQuarter = getQuarterInfo(claim.settlement, claim.accident);
@@ -164,6 +196,24 @@ function aggregateClaimToQuarters(claim, oneBasedDevQuarters = false) {
   const startDevQuarter = accidentQuarter.developmentQuarter;
   const endDevQuarter = settlementQuarter.developmentQuarter;
   const quarters = [];
+
+  // Validate development quarter range
+  if (endDevQuarter < startDevQuarter || endDevQuarter - startDevQuarter > 100) {
+    // Invalid range, return minimal data
+    return {
+      claimInfo: {
+        claimId: claim.staticCovariates.claimId,
+        ...claim.staticCovariates,
+        accidentDate: claim.accident,
+        notifyDate: claim.notify,
+        settlementDate: claim.settlement,
+        accidentQuarter: accidentQuarter.quarterKey,
+        notifyQuarter: notifyQuarter.quarterKey,
+        notifyLag: notifyQuarter.developmentQuarter - accidentQuarter.developmentQuarter
+      },
+      quarters: []
+    };
+  }
 
   for (let devQ = startDevQuarter; devQ <= endDevQuarter; devQ++) {
     // Find existing quarter data or create empty one
@@ -693,7 +743,17 @@ function ClaimsDiagram() {
       );
     }
 
-    const { claimInfo, quarters } = claimData;
+    try {
+      const { claimInfo, quarters } = claimData;
+
+      // Validate data
+      if (!claimInfo || !quarters || !Array.isArray(quarters)) {
+        return (
+          <div className="text-center py-8 text-gray-500">
+            Error loading claim data. Please select a different claim.
+          </div>
+        );
+      }
     const maxAmount = Math.max(...quarters.map(q => q.totalAmount), 1);
 
     return (
@@ -986,17 +1046,13 @@ function ClaimsDiagram() {
                       <th className="px-3 py-2 text-left font-medium">Quarter</th>
                       <th className="px-3 py-2 text-right font-medium">Sum</th>
                       <th className="px-3 py-2 text-right font-medium">Count</th>
-                      <th className="px-3 py-2 text-right font-medium">Min</th>
                       <th className="px-3 py-2 text-right font-medium">Avg</th>
-                      <th className="px-3 py-2 text-right font-medium">Max</th>
                     </tr>
                   </thead>
                   <tbody>
                     {quarters.map((quarter, i) => {
                       const payments = quarter.payments;
                       const amounts = payments.map(p => p.amount);
-                      const min = amounts.length > 0 ? Math.min(...amounts) : null;
-                      const max = amounts.length > 0 ? Math.max(...amounts) : null;
                       const avg = amounts.length > 0 ? (amounts.reduce((a, b) => a + b, 0) / amounts.length).toFixed(1) : null;
 
                       return (
@@ -1004,9 +1060,7 @@ function ClaimsDiagram() {
                           <td className="px-3 py-2 font-mono">Dev Q{quarter.developmentQuarter}</td>
                           <td className="px-3 py-2 text-right font-medium">${quarter.totalAmount}</td>
                           <td className="px-3 py-2 text-right text-gray-600">{quarter.paymentCount}</td>
-                          <td className="px-3 py-2 text-right text-gray-600">{min !== null ? `$${min}` : '-'}</td>
                           <td className="px-3 py-2 text-right text-gray-600">{avg !== null ? `$${avg}` : '-'}</td>
-                          <td className="px-3 py-2 text-right text-gray-600">{max !== null ? `$${max}` : '-'}</td>
                         </tr>
                       );
                     })}
@@ -1026,10 +1080,9 @@ function ClaimsDiagram() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 py-2 text-left font-medium">Quarter</th>
-                  <th className="px-3 py-2 text-right font-medium">Total Paid</th>
-                  <th className="px-3 py-2 text-right font-medium">Avg Payment</th>
-                  <th className="px-3 py-2 text-right font-medium">Max Payment</th>
+                  <th className="px-3 py-2 text-right font-medium">Cumulative Total Paid</th>
                   <th className="px-3 py-2 text-right font-medium">Payment Count</th>
+                  <th className="px-3 py-2 text-right font-medium">Avg Payment</th>
                 </tr>
               </thead>
               <tbody>
@@ -1046,15 +1099,13 @@ function ClaimsDiagram() {
                     allPayments = allPayments.concat(quarter.payments.map(p => p.amount));
 
                     const avgPayment = allPayments.length > 0 ? (cumulativeSum / allPayments.length) : 0;
-                    const maxPayment = allPayments.length > 0 ? Math.max(...allPayments) : 0;
 
                     return (
                       <tr key={i} className="border-t border-gray-100">
                         <td className="px-3 py-2 font-mono">Dev Q{quarter.developmentQuarter}</td>
                         <td className="px-3 py-2 text-right font-medium">${cumulativeSum}</td>
-                        <td className="px-3 py-2 text-right font-medium">{avgPayment > 0 ? `$${avgPayment.toFixed(1)}` : '-'}</td>
-                        <td className="px-3 py-2 text-right font-medium">{maxPayment > 0 ? `$${maxPayment}` : '-'}</td>
                         <td className="px-3 py-2 text-right font-medium">{cumulativeCount}</td>
+                        <td className="px-3 py-2 text-right font-medium">{avgPayment > 0 ? `$${avgPayment.toFixed(1)}` : '-'}</td>
                       </tr>
                     );
                   });
@@ -1063,11 +1114,502 @@ function ClaimsDiagram() {
             </table>
           </div>
           <div className="text-xs text-gray-600 mt-2">
-            <strong>Code variables:</strong> Total Paid = <code>total_payment_size</code>, Avg Payment = <code>average_payment_size</code>, Max Payment = <code>max_payment_size</code>
+            <strong>Code variables:</strong> Cumulative Total Paid = <code>total_payment_size</code>, Avg Payment = <code>average_payment_size</code>
+          </div>
+        </div>
+
+        {/* Outstanding Liability View */}
+        <div className="bg-red-50 p-4 rounded-lg">
+          <div className="text-sm font-medium mb-3">Outstanding Claim Liability View</div>
+          {(() => {
+            // Calculate ultimate claim size as total of all payments over claim lifetime
+            const ultimateClaimSize = quarters.reduce((total, quarter) => total + quarter.totalAmount, 0);
+
+            return (
+              <>
+                <div className="text-sm mb-3">
+                  <strong>Ultimate = Total Payments Over Claim Lifetime = ${ultimateClaimSize}</strong>
+                </div>
+                <div className="bg-white rounded border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Quarter</th>
+                        <th className="px-3 py-2 text-right font-medium">Total Paid</th>
+                        <th className="px-3 py-2 text-right font-medium">Outstanding Liability</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        let cumulativeSum = 0;
+
+                        return quarters.map((quarter, i) => {
+                          cumulativeSum += quarter.totalAmount;
+                          const outstandingLiability = Math.max(0, ultimateClaimSize - cumulativeSum);
+
+                          return (
+                            <tr key={i} className="border-t border-gray-100">
+                              <td className="px-3 py-2 font-mono">Dev Q{quarter.developmentQuarter}</td>
+                              <td className="px-3 py-2 text-right font-medium">${cumulativeSum}</td>
+                              <td className="px-3 py-2 text-right font-medium">${outstandingLiability}</td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            );
+          })()}
+          <div className="text-xs text-gray-600 mt-2">
+            <strong>Target variable:</strong> Outstanding Liability = <code>ultimate_claim_size - cumulative_payments_to_date</code>
+          </div>
+        </div>
+
+        {/* Development Period Calculation */}
+        {/*
+        <div className="bg-purple-50 p-4 rounded-lg">
+          <div className="text-sm font-medium mb-3">Development Period Calculation</div>
+          <div className="space-y-3">
+
+            {/* Key Dates */}
+            {/*
+            <div className="bg-white p-3 rounded border">
+              <div className="text-xs font-medium text-gray-600 mb-2">Key Date Calculations</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <div>
+                  <strong>Accident Quarter:</strong><br/>
+                  <code className="text-xs bg-gray-100 px-1 rounded">getQuarter(accident_date)</code><br/>
+                  <span className="text-gray-600">= Q{getQuarterInfo(claimInfo.accidentDate, claimInfo.accidentDate).developmentQuarter}</span>
+                </div>
+                <div>
+                  <strong>Notification Quarter:</strong><br/>
+                  <code className="text-xs bg-gray-100 px-1 rounded">getQuarter(notification_date)</code><br/>
+                  <span className="text-gray-600">= Q{getQuarterInfo(claimInfo.notifyDate, claimInfo.accidentDate).developmentQuarter}</span>
+                </div>
+                <div>
+                  <strong>Settlement Quarter:</strong><br/>
+                  <code className="text-xs bg-gray-100 px-1 rounded">getQuarter(settlement_date)</code><br/>
+                  <span className="text-gray-600">= Q{getQuarterInfo(claimInfo.settlementDate, claimInfo.accidentDate).developmentQuarter}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Development Period Formula */}
+            {/*
+            <div className="bg-white p-3 rounded border">
+              <div className="text-xs font-medium text-gray-600 mb-2">Development Period Formula</div>
+              <div className="text-sm">
+                <code className="bg-gray-100 px-2 py-1 rounded text-xs">
+                  {oneBasedDevQuarters ?
+                    'development_period = event_quarter - accident_quarter + 1' :
+                    'development_period = event_quarter - accident_quarter'
+                  }
+                </code>
+              </div>
+              <div className="mt-2 text-xs text-gray-600">
+                This formula converts quarters into development periods relative to the accident quarter.
+                {oneBasedDevQuarters && <><br/>The "+1" ensures development periods start from 1 (one-based numbering).</>}
+              </div>
+            </div>
+
+            {/* Range Calculation */}
+            {/*
+            <div className="bg-white p-3 rounded border">
+              <div className="text-xs font-medium text-gray-600 mb-2">Development Period Range for This Claim</div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <strong>Min Development Period:</strong><br/>
+                  <code className="text-xs bg-gray-100 px-1 rounded">notification_quarter - accident_quarter{oneBasedDevQuarters ? ' + 1' : ''}</code><br/>
+                  <span className="text-gray-600">= {oneBasedDevQuarters ?
+                    (getQuarterInfo(claimInfo.notifyDate, claimInfo.accidentDate).developmentQuarter + 1) :
+                    (getQuarterInfo(claimInfo.notifyDate, claimInfo.accidentDate).developmentQuarter)
+                  }</span>
+                </div>
+                <div>
+                  <strong>Max Development Period:</strong><br/>
+                  <code className="text-xs bg-gray-100 px-1 rounded">settlement_quarter - accident_quarter{oneBasedDevQuarters ? ' + 1' : ''}</code><br/>
+                  <span className="text-gray-600">= {oneBasedDevQuarters ?
+                    (getQuarterInfo(claimInfo.settlementDate, claimInfo.accidentDate).developmentQuarter + 1) :
+                    (getQuarterInfo(claimInfo.settlementDate, claimInfo.accidentDate).developmentQuarter)
+                  }</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+        */}
+
+        {/* Data Structure Transformation */}
+        <div className="bg-orange-50 p-4 rounded-lg">
+          <div className="text-sm font-medium mb-3">WIP: Data Structure Transformation</div>
+          <div className="space-y-3">
+
+            {/* Concept Explanation */}
+            <div className="bg-white p-3 rounded border">
+              <div className="text-xs font-medium text-gray-600 mb-2">From Transactions to Development Triangle</div>
+              <div className="text-sm text-gray-700">
+                We transform individual claim histories into many training observations in a development triangle format.
+                We create one row per claim per development period, containing cumulative information up to that point.
+              </div>
+            </div>
+
+            {/* Row Generation Logic */}
+            <div className="bg-white p-3 rounded border">
+              <div className="text-xs font-medium text-gray-600 mb-2">
+                One Row Per Claim Per Development Period
+              </div>
+
+              {(() => {
+                // Convert timestamp dates to quarters for calculation
+                const accidentQuarter = isFinite(claimInfo.accidentDate) ? getQuarterInfo(claimInfo.accidentDate, claimInfo.accidentDate).developmentQuarter : 0;
+                const notifyQuarter = isFinite(claimInfo.notifyDate) ? getQuarterInfo(claimInfo.notifyDate, claimInfo.accidentDate).developmentQuarter : 0;
+                const settlementQuarter = isFinite(claimInfo.settlementDate) ? getQuarterInfo(claimInfo.settlementDate, claimInfo.accidentDate).developmentQuarter : 0;
+
+                const numRows = Math.max(0, Math.min(20, settlementQuarter - notifyQuarter + 1));
+                const validNumRows = isFinite(numRows) && numRows > 0 ? Math.floor(numRows) : 0;
+
+                // SVG dimensions
+                const svgWidth = 600;
+                const svgHeight = Math.max(120, 40 + validNumRows * 25);
+                const rowHeight = 20;
+                const startY = 30;
+
+                return (
+                  <div className="space-y-4">
+                    {/* Visual Row Generation */}
+                    <div className="bg-gray-50 p-3 rounded">
+                      <div className="text-xs font-medium mb-2">
+                        Claim {claimInfo.claimId} → {validNumRows} Training Rows:
+                      </div>
+                      <svg width="100%" height={svgHeight} className="border rounded bg-white">
+                        {/* Original claim representation at top */}
+                        <rect x="20" y="10" width="560" height="15" fill="#E5E7EB" stroke="#9CA3AF" strokeWidth="1" rx="2"/>
+                        <text x="25" y="21" fontSize="10" fill="#374151" fontWeight="bold">
+                          Original Claim {claimInfo.claimId}
+                        </text>
+                        <text x="450" y="21" fontSize="9" fill="#6B7280">
+                          Notify Q{notifyQuarter} → Settle Q{settlementQuarter}
+                        </text>
+
+                        {/* Training rows */}
+                        {Array.from({ length: validNumRows }, (_, i) => {
+                          const y = startY + i * 25;
+                          const currentQuarter = notifyQuarter + i;
+                          const devPeriod = oneBasedDevQuarters ?
+                            (currentQuarter - accidentQuarter + 1) :
+                            (currentQuarter - accidentQuarter);
+
+                          // Calculate cutoff point based on development quarter
+                          const totalWidth = 540;
+                          const cutoffRatio = Math.min(1, (i + 1) / validNumRows);
+                          const cutoffWidth = totalWidth * cutoffRatio;
+
+                          return (
+                            <g key={i}>
+                              {/* Full row background (censored part) */}
+                              <rect
+                                x="20"
+                                y={y}
+                                width={totalWidth}
+                                height={rowHeight}
+                                fill="#FEF3C7"
+                                stroke="#F59E0B"
+                                strokeWidth="1"
+                                rx="2"
+                                opacity="0.3"
+                              />
+
+                              {/* Visible (uncensored) part */}
+                              <rect
+                                x="20"
+                                y={y}
+                                width={cutoffWidth}
+                                height={rowHeight}
+                                fill="#DBEAFE"
+                                stroke="#3B82F6"
+                                strokeWidth="1"
+                                rx="2"
+                              />
+
+                              {/* Cutoff line */}
+                              <line
+                                x1={20 + cutoffWidth}
+                                y1={y}
+                                x2={20 + cutoffWidth}
+                                y2={y + rowHeight}
+                                stroke="#DC2626"
+                                strokeWidth="2"
+                              />
+
+                              {/* Row label */}
+                              <text x="25" y={y + 13} fontSize="9" fill="#1E40AF" fontWeight="bold">
+                                Row {i + 1}
+                              </text>
+
+                              {/* Development period */}
+                              <text x="80" y={y + 13} fontSize="8" fill="#374151">
+                                Dev Period {devPeriod}
+                              </text>
+
+                              {/* Cutoff label */}
+                              <text x={25 + cutoffWidth} y={y + 13} fontSize="8" fill="#DC2626" fontWeight="bold">
+                                Cut at DQ{devPeriod}
+                              </text>
+
+                              {/* Available data indicator */}
+                              <text x="450" y={y + 13} fontSize="8" fill="#059669">
+                                Data: Accident → Q{currentQuarter}
+                              </text>
+                            </g>
+                          );
+                        })}
+
+                        {/* Legend */}
+                        <g transform="translate(20, {svgHeight - 35})">
+                          <rect x="0" y="0" width="15" height="10" fill="#DBEAFE" stroke="#3B82F6" strokeWidth="1"/>
+                          <text x="20" y="8" fontSize="8" fill="#374151">Available Data</text>
+
+                          <rect x="120" y="0" width="15" height="10" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="1" opacity="0.3"/>
+                          <text x="140" y="8" fontSize="8" fill="#374151">Future (Censored)</text>
+
+                          <line x1="250" y1="5" x2="265" y2="5" stroke="#DC2626" strokeWidth="2"/>
+                          <text x="270" y="8" fontSize="8" fill="#374151">Development Cutoff</text>
+                        </g>
+                      </svg>
+
+                      <div className="mt-2 text-xs text-gray-600">
+                        <strong>Process:</strong> Panel Data Transformation
+                      </div>
+                    </div>
+
+                    {/* Row details */}
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">One Row Per Claim Per Development Period:</div>
+                      <div className="grid grid-cols-1 gap-1 max-h-40 overflow-y-auto">
+                        {validNumRows > 0 ? Array.from({ length: validNumRows }, (_, i) => {
+                          const currentQuarter = notifyQuarter + i;
+                          const devPeriod = oneBasedDevQuarters ?
+                            (currentQuarter - accidentQuarter + 1) :
+                            (currentQuarter - accidentQuarter);
+                          return (
+                            <div key={i} className="flex items-center gap-2 text-xs bg-gray-50 p-2 rounded">
+                              <span className="font-mono bg-blue-100 px-2 py-1 rounded text-blue-800 min-w-12">R{i + 1}</span>
+                              <span className="flex-1">
+                                Claim {claimInfo.claimId} at Dev Period {devPeriod}
+                                <span className="text-green-600 ml-2 font-medium">
+                                  [Available: Accident → Q{currentQuarter}]
+                                </span>
+                                <span className="text-red-600 ml-2">
+                                  [Censored: Q{currentQuarter + 1}+ ]
+                                </span>
+                              </span>
+                            </div>
+                          );
+                        }) : (
+                          <div className="text-xs text-gray-500 p-2 bg-yellow-50 rounded">
+                            This claim settles immediately, creating minimal development history.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+
+
+          </div>
+        </div>
+
+        {/* Feature Engineering */}
+        <div className="bg-indigo-50 p-4 rounded-lg">
+          <div className="text-sm font-medium mb-3">WIP: Feature Engineering</div>
+          <div className="space-y-3">
+
+            {/* Log Transformations */}
+            <div className="bg-white p-3 rounded border">
+              <div className="text-xs font-medium text-gray-600 mb-2">Log Transformations</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <div>
+                  <strong>Payment Features:</strong>
+                  <ul className="text-xs mt-1 space-y-1 text-gray-600">
+                    <li>• <code>log_total_payment_size</code></li>
+                    <li>• <code>log_average_payment_size</code></li>
+                  </ul>
+                </div>
+                <div>
+                  <strong>Incurred Features:</strong>
+                  <ul className="text-xs mt-1 space-y-1 text-gray-600">
+                    <li>• <code>log_average_incurred_size</code></li>
+                    <li>• <code>log_latest_incurred</code></li>
+                    <li>• <code>log_latest_ocl</code></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Remaining Claim Value */}
+            <div className="bg-white p-3 rounded border">
+              <div className="text-xs font-medium text-gray-600 mb-2">Target Variable: Outstanding Claim Liability</div>
+              <div className="text-sm">
+                <strong>Outstanding Claim Liability:</strong><br/>
+                <code className="text-xs bg-gray-100 px-1 rounded">outstanding_liability = ultimate_claim_size - cumulative_payments_to_date</code>
+                <div className="mt-2 text-xs text-gray-600">
+                  This represents the unpaid portion of the claim liability, which is what neural network reserving models predict.
+                  For the selected claim, this is the amount the insurer still expects to pay out.
+                </div>
+              </div>
+            </div>
+
+            {/* Temporal Features */}
+            <div className="bg-white p-3 rounded border">
+              <div className="text-xs font-medium text-gray-600 mb-2">Temporal Features</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <div>
+                  <strong>Development Timing:</strong>
+                  <ul className="text-xs mt-1 space-y-1 text-gray-600">
+                    <li>• <code>development_period</code></li>
+                    <li>• <code>settlement_period</code></li>
+                    <li>• <code>notification_delay</code></li>
+                    <li>• <code>settlement_delay</code></li>
+                  </ul>
+                </div>
+                <div>
+                  <strong>Activity Patterns:</strong>
+                  <ul className="text-xs mt-1 space-y-1 text-gray-600">
+                    <li>• <code>average_num_payments_per_period</code></li>
+                    <li>• <code>cumulative_num_payments</code></li>
+                    <li>• <code>payment_count</code> (current period)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Static Covariates */}
+            <div className="bg-white p-3 rounded border">
+              <div className="text-xs font-medium text-gray-600 mb-2">Static Covariates (Attached to Each Row)</div>
+              <div className="text-sm">
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <strong>Legal Representation:</strong><br/>
+                    <span className="text-gray-600">{claimInfo.Legal_Representation}</span>
+                  </div>
+                  <div>
+                    <strong>Injury Severity:</strong><br/>
+                    <span className="text-gray-600">{claimInfo.Injury_Severity}</span>
+                  </div>
+                  <div>
+                    <strong>Age of Claimant:</strong><br/>
+                    <span className="text-gray-600">{claimInfo.Age_of_Claimant}</span>
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-gray-600">
+                  These remain constant across all development periods for the same claim, providing contextual information
+                  that may influence the claim's development pattern.
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* Final Dataset Preview */}
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="text-sm font-medium mb-3">WIP: Final Dataset Preview</div>
+          <div className="space-y-3">
+
+            {/* Dataset Summary */}
+            <div className="bg-white p-3 rounded border">
+              <div className="text-xs font-medium text-gray-600 mb-2">Dataset Structure</div>
+              <div className="text-sm">
+                <strong>From Transaction-Level to Development Triangle Format:</strong>
+                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <span className="font-medium">Original Data:</span><br/>
+                    <span className="text-xs text-gray-600">• Individual payment transactions</span><br/>
+                    <span className="text-xs text-gray-600">• Variable timing within periods</span><br/>
+                    <span className="text-xs text-gray-600">• One row per transaction</span>
+                  </div>
+                  <div>
+                    <span className="font-medium">Transformed Data:</span><br/>
+                    <span className="text-xs text-gray-600">• One row per claim per development period</span><br/>
+                    <span className="text-xs text-gray-600">• Cumulative features up to each period</span><br/>
+                    <span className="text-xs text-gray-600">• Ready for ML model training</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sample Row Structure */}
+            <div className="bg-white p-3 rounded border">
+              <div className="text-xs font-medium text-gray-600 mb-2">Sample Row from Final Dataset</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="border border-gray-300 px-2 py-1">claim_no</th>
+                      <th className="border border-gray-300 px-2 py-1">development_period</th>
+                      <th className="border border-gray-300 px-2 py-1">cumulative_num_payments</th>
+                      <th className="border border-gray-300 px-2 py-1">log_total_payment_size</th>
+                      <th className="border border-gray-300 px-2 py-1">log_average_payment_size</th>
+                      <th className="border border-gray-300 px-2 py-1">Legal_Representation</th>
+                      <th className="border border-gray-300 px-2 py-1">log_claim_size</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quarters && quarters.length > 0 ? quarters.slice(0, 3).map((quarter, i) => {
+                      const cumulativeSum = quarters.slice(0, i + 1).reduce((sum, q) => sum + q.totalAmount, 0);
+                      const cumulativeCount = quarters.slice(0, i + 1).reduce((sum, q) => sum + q.paymentCount, 0);
+                      const avgPayment = cumulativeCount > 0 ? cumulativeSum / cumulativeCount : 0;
+                      const logTotal = cumulativeSum > 0 ? Math.log(cumulativeSum).toFixed(2) : '0.00';
+                      const logAvg = avgPayment > 0 ? Math.log(avgPayment).toFixed(2) : '0.00';
+                      const remainingClaim = Math.max(1, 100 - cumulativeSum); // Ensure positive
+                      const logRemaining = Math.log(remainingClaim).toFixed(2);
+
+                      return (
+                        <tr key={i}>
+                          <td className="border border-gray-300 px-2 py-1 text-center">{claimInfo.claimId}</td>
+                          <td className="border border-gray-300 px-2 py-1 text-center">{quarter.developmentQuarter}</td>
+                          <td className="border border-gray-300 px-2 py-1 text-center">{cumulativeCount}</td>
+                          <td className="border border-gray-300 px-2 py-1 text-center">{logTotal}</td>
+                          <td className="border border-gray-300 px-2 py-1 text-center">{logAvg}</td>
+                          <td className="border border-gray-300 px-2 py-1 text-center">{claimInfo.Legal_Representation}</td>
+                          <td className="border border-gray-300 px-2 py-1 text-center">{logRemaining}</td>
+                        </tr>
+                      );
+                    }) : (
+                      <tr>
+                        <td colSpan="7" className="border border-gray-300 px-2 py-1 text-center text-gray-500">
+                          No quarterly data available
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-2 text-xs text-gray-600">
+                This shows one row per development period for claim {claimInfo.claimId}. Each row represents the cumulative state
+                at a specific development period, with all features calculated up to that point in time.
+              </div>
+            </div>
+
+
           </div>
         </div>
       </div>
     );
+    } catch (error) {
+      console.error('Error in QuarterlyPreprocessingView:', error);
+      return (
+        <div className="text-center py-8 text-red-500">
+          Error rendering quarterly preprocessing view. Please try selecting a different claim.
+        </div>
+      );
+    }
   }
 
   // -------------------- Render --------------------
@@ -1076,6 +1618,9 @@ function ClaimsDiagram() {
       {/* Main content */}
       <div className='w-full p-4 flex flex-col items-center'>
         <div className='text-xl font-semibold mb-2'>Individual Reserving Dataset Splits</div>
+        <div className='mb-3 text-sm text-gray-600 text-center max-w-2xl'>
+          Click on any claim line in the diagram below to select it for detailed analysis in the preprocessing sections.
+        </div>
         <div className='mb-3 text-sm flex flex-wrap items-center justify-center gap-4'>
           <span className='font-medium'>Split by:</span>
           <label className='inline-flex items-center gap-2'>
