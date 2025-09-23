@@ -115,6 +115,101 @@ function generateSmartTicks(start, end, maxTicks = 10) {
   return ticks;
 }
 
+// Quarterly aggregation helpers
+function getQuarterInfo(date, referenceDate) {
+  const refYear = referenceDate.getUTCFullYear();
+  const refQuarter = Math.floor(referenceDate.getUTCMonth() / 3);
+
+  const dateYear = date.getUTCFullYear();
+  const dateQuarter = Math.floor(date.getUTCMonth() / 3);
+
+  const quartersSinceRef = (dateYear - refYear) * 4 + (dateQuarter - refQuarter);
+
+  return {
+    calendarYear: dateYear,
+    calendarQuarter: dateQuarter + 1,
+    developmentQuarter: quartersSinceRef, // 0-based by default
+    quarterKey: `${dateYear}Q${dateQuarter + 1}`
+  };
+}
+
+function aggregateClaimToQuarters(claim, oneBasedDevQuarters = false) {
+  const accidentQuarter = getQuarterInfo(claim.accident, claim.accident);
+  const notifyQuarter = getQuarterInfo(claim.notify, claim.accident);
+  const settlementQuarter = getQuarterInfo(claim.settlement, claim.accident);
+
+  // Group payments by quarter
+  const quarterlyPayments = new Map();
+
+  for (const payment of claim.payments) {
+    const paymentQuarter = getQuarterInfo(payment.date, claim.accident);
+    const key = paymentQuarter.quarterKey;
+
+    if (!quarterlyPayments.has(key)) {
+      quarterlyPayments.set(key, {
+        ...paymentQuarter,
+        totalAmount: 0,
+        paymentCount: 0,
+        payments: []
+      });
+    }
+
+    const quarterData = quarterlyPayments.get(key);
+    quarterData.totalAmount += payment.amount;
+    quarterData.paymentCount += 1;
+    quarterData.payments.push(payment);
+  }
+
+  // Create complete sequence from accident to settlement
+  const startDevQuarter = accidentQuarter.developmentQuarter;
+  const endDevQuarter = settlementQuarter.developmentQuarter;
+  const quarters = [];
+
+  for (let devQ = startDevQuarter; devQ <= endDevQuarter; devQ++) {
+    // Find existing quarter data or create empty one
+    const existingQuarter = Array.from(quarterlyPayments.values())
+      .find(q => q.developmentQuarter === devQ);
+
+    if (existingQuarter) {
+      quarters.push(existingQuarter);
+    } else {
+      // Create empty quarter - need to determine calendar quarter
+      const quarterDate = new Date(claim.accident);
+      quarterDate.setMonth(quarterDate.getMonth() + (devQ * 3));
+      const emptyQuarterInfo = getQuarterInfo(quarterDate, claim.accident);
+
+      quarters.push({
+        ...emptyQuarterInfo,
+        developmentQuarter: devQ,
+        totalAmount: 0,
+        paymentCount: 0,
+        payments: []
+      });
+    }
+  }
+
+  // Adjust development quarters if one-based is selected
+  if (oneBasedDevQuarters) {
+    quarters.forEach(q => {
+      q.developmentQuarter = q.developmentQuarter + 1;
+    });
+  }
+
+  return {
+    claimInfo: {
+      claimId: claim.staticCovariates.claimId,
+      ...claim.staticCovariates,
+      accidentDate: claim.accident,
+      notifyDate: claim.notify,
+      settlementDate: claim.settlement,
+      accidentQuarter: accidentQuarter.quarterKey,
+      notifyQuarter: notifyQuarter.quarterKey,
+      notifyLag: notifyQuarter.developmentQuarter - accidentQuarter.developmentQuarter
+    },
+    quarters
+  };
+}
+
 function generateClaims({
   n = 20,
   startDate,
@@ -129,24 +224,73 @@ function generateClaims({
   const claims = [];
   const totalDays = Math.max(1, daysBetween(startDate, endDate));
   const latestNotify = Math.max(0, totalDays - minDurDays);
+  // Static covariate options
+  const postcodes = ['2000', '3000', '4000', '5000', '6000', '7000', '1000'];
+  const claimTypes = ['Motor', 'Property', 'Liability', 'Workers Comp'];
+  const regions = ['Metro', 'Regional', 'Remote'];
+
   for (let i = 0; i < n; i++) {
+    // Generate accident date (7-60 days before notification)
+    const accidentOffset = 7 + Math.floor(rand() * 54);
     const notify = addDays(startDate, Math.floor(rand() * latestNotify));
+    const accident = addDays(notify, -accidentOffset);
+
     const dur = minDurDays + Math.floor(rand() * Math.max(1, maxDurDays - minDurDays + 1));
     const rawSettlement = addDays(notify, dur);
     const settlement = rawSettlement > endDate ? endDate : rawSettlement;
+
+    // Generate payments (using original logic)
     let k = Math.floor(rand() * (maxPartials + 1));
     if (daysBetween(notify, settlement) < 2) k = 0;
-    let partials = [];
+    let payments = [];
     for (let j = 0; j < k; j++) {
       const spanDays = Math.max(1, daysBetween(notify, settlement));
       const t = addDays(notify, Math.floor(rand() * spanDays));
-      partials.push(t);
+      const amount = 1 + Math.floor(rand() * 9); // Random amount 1-9
+      payments.push({ date: t, amount });
     }
-    partials = partials
-      .filter((t) => t > notify && t < settlement)
-      .sort((a, b) => a.getTime() - b.getTime());
-    if (dedupeMonthly) partials = dedupeByCalendarMonth(partials);
-    claims.push({ notify, settlement, partials });
+
+    // Filter, sort, and dedupe payments
+    payments = payments
+      .filter((p) => p.date > notify && p.date <= settlement)
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    if (dedupeMonthly) {
+      const seen = new Set();
+      const deduped = [];
+      for (const p of payments) {
+        const key = monthKeyUTC(p.date);
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduped.push(p);
+        } else {
+          // If same month, add amounts together
+          const existing = deduped.find(d => monthKeyUTC(d.date) === key);
+          if (existing) existing.amount += p.amount;
+        }
+      }
+      payments = deduped;
+    }
+
+    // Legacy partials for backward compatibility
+    const partials = payments.map(p => p.date);
+
+    // Static covariates
+    const staticCovariates = {
+      postcode: postcodes[Math.floor(rand() * postcodes.length)],
+      claimType: claimTypes[Math.floor(rand() * claimTypes.length)],
+      region: regions[Math.floor(rand() * regions.length)],
+      claimId: `CLM-${String(i + 1).padStart(4, '0')}`
+    };
+
+    claims.push({
+      accident,
+      notify,
+      settlement,
+      partials, // for backward compatibility
+      payments, // new enhanced payment data
+      staticCovariates
+    });
   }
   claims.sort((a, b) => a.notify.getTime() - b.notify.getTime());
   return claims;
@@ -173,9 +317,9 @@ function ClaimsDiagram() {
   const [numClaims, setNumClaims] = useState(20);
   const [startDateStr, setStartDateStr] = useState('2020-01-01');
   const [endDateStr, setEndDateStr] = useState('2025-01-01');
-  const [minDurDays, setMinDurDays] = useState(30);
-  const [maxDurDays, setMaxDurDays] = useState(365);
-  const [maxPartials, setMaxPartials] = useState(3);
+  const [minDurDays, setMinDurDays] = useState(180);
+  const [maxDurDays, setMaxDurDays] = useState(1095);
+  const [maxPartials, setMaxPartials] = useState(20);
   const [seedText, setSeedText] = useState('insurer-diagram');
   const [axisTicks, setAxisTicks] = useState(10);
   const [label, setLabel] = useState('Date');
@@ -198,6 +342,8 @@ function ClaimsDiagram() {
   const [valCutStr, setValCutStr] = useState('2023-06-30');
   const [testCutStr, setTestCutStr] = useState('2025-01-01');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedClaimIndex, setSelectedClaimIndex] = useState(0);
+  const [oneBasedDevQuarters, setOneBasedDevQuarters] = useState(false);
 
   const COLORS = { train: '#2563eb', val: '#f59e0b', test: '#10b981', post: '#9ca3af' };
   const FADE_OPACITY = 0.35;
@@ -212,7 +358,7 @@ function ClaimsDiagram() {
     { id: 'settlement', label: 'Settlement date' },
     { id: 'notifyDup', label: 'Both' },
   ];
-  const [splitMode, setSplitMode] = useState('notify');
+  const [splitMode, setSplitMode] = useState('settlement');
 
   // Parse start/end
   const [startDate, endDate] = useMemo(() => {
@@ -501,7 +647,7 @@ function ClaimsDiagram() {
     return margins.left + ((t - xMin) / (xMax - xMin)) * w;
   }
   function yScale(i) {
-    return margins.top + i * rowGap;
+    return margins.top + 10 + i * rowGap; // Add 10px buffer after cutoff labels
   }
 
   const svgRef = useRef(null);
@@ -531,6 +677,399 @@ function ClaimsDiagram() {
     return generateSmartTicks(startDate, endDate, axisTicks + 1);
   }, [startDate, endDate, axisTicks]);
 
+  // Selected claim quarterly data
+  const selectedClaim = selectedClaimIndex !== null ? claims[selectedClaimIndex] : null;
+  const quarterlyData = selectedClaim ? aggregateClaimToQuarters(selectedClaim, oneBasedDevQuarters) : null;
+  const [showPaymentDetails, setShowPaymentDetails] = useState(true);
+  const [showQuarterlyAggregation, setShowQuarterlyAggregation] = useState(true);
+
+  // Quarterly visualization component
+  function QuarterlyPreprocessingView({ claimData }) {
+    if (!claimData) {
+      return (
+        <div className="text-center py-8 text-gray-500">
+          Select a claim above to see its quarterly preprocessing
+        </div>
+      );
+    }
+
+    const { claimInfo, quarters } = claimData;
+    const maxAmount = Math.max(...quarters.map(q => q.totalAmount), 1);
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="text-lg font-semibold">Quarterly Preprocessing: {claimInfo.claimId}</div>
+          <label className='flex items-center gap-2 text-sm'>
+            <input
+              type='checkbox'
+              checked={oneBasedDevQuarters}
+              onChange={(e) => setOneBasedDevQuarters(e.target.checked)}
+            />
+            <span>1-based dev quarters</span>
+          </label>
+        </div>
+
+        {/* Static covariates */}
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="text-sm font-medium mb-2">Static Covariates</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+            <div><strong>Type:</strong> {claimInfo.claimType}</div>
+            <div><strong>Region:</strong> {claimInfo.region}</div>
+            <div><strong>Postcode:</strong> {claimInfo.postcode}</div>
+            <div><strong>Notify Lag:</strong> {claimInfo.notifyLag} quarters</div>
+          </div>
+        </div>
+
+        {/* Timeline with accident date */}
+        <div className="bg-blue-50 p-4 rounded-lg">
+          <div className="text-sm font-medium mb-3">Continuous Timeline</div>
+          <div className="relative">
+            <svg width="100%" height="100" viewBox="0 0 800 100">
+              {(() => {
+                // Calculate timeline bounds
+                const timelineStart = claimInfo.accidentDate;
+                const timelineEnd = claimInfo.settlementDate;
+                const timelineSpan = timelineEnd.getTime() - timelineStart.getTime();
+
+                // SVG dimensions
+                const svgLeft = 40;
+                const svgRight = 760;
+                const svgWidth = svgRight - svgLeft;
+                const timelineY = 40;
+
+                // Scale function
+                const timeScale = (date) => {
+                  const t = date.getTime();
+                  return svgLeft + ((t - timelineStart.getTime()) / timelineSpan) * svgWidth;
+                };
+
+                // Generate quarter boundaries
+                const quarterBoundaries = [];
+                let currentDate = new Date(timelineStart.getUTCFullYear(), 0, 1); // Start of year
+                while (currentDate <= timelineEnd) {
+                  if (currentDate >= timelineStart) {
+                    quarterBoundaries.push(new Date(currentDate));
+                  }
+                  // Move to next quarter start
+                  const month = currentDate.getMonth();
+                  const nextQuarterMonth = Math.floor(month / 3) * 3 + 3;
+                  if (nextQuarterMonth >= 12) {
+                    currentDate = new Date(currentDate.getFullYear() + 1, 0, 1);
+                  } else {
+                    currentDate = new Date(currentDate.getFullYear(), nextQuarterMonth, 1);
+                  }
+                }
+                // Add final boundary if needed
+                const finalBoundary = new Date(timelineEnd.getUTCFullYear() + 1, 0, 1);
+                if (quarterBoundaries.length === 0 || quarterBoundaries[quarterBoundaries.length - 1] < timelineEnd) {
+                  quarterBoundaries.push(finalBoundary);
+                }
+
+                return (
+                  <>
+                    {/* Timeline base */}
+                    <line x1={svgLeft} y1={timelineY} x2={svgRight} y2={timelineY} stroke="#64748b" strokeWidth="2" />
+
+                    {/* Quarter boundaries and labels */}
+                    {quarterBoundaries.map((boundary, i) => {
+                      if (i === 0) return null; // Skip first boundary
+
+                      const prevBoundary = quarterBoundaries[i - 1];
+                      const x1 = timeScale(prevBoundary);
+                      const x2 = timeScale(boundary);
+                      const midX = (x1 + x2) / 2;
+
+                      // Quarter info
+                      const quarter = Math.floor(prevBoundary.getMonth() / 3) + 1;
+                      const year = prevBoundary.getFullYear();
+
+                      return (
+                        <g key={i}>
+                          {/* Quarter boundary ticks */}
+                          <line x1={x1} y1={timelineY - 8} x2={x1} y2={timelineY + 8} stroke="#9ca3af" strokeWidth="1" />
+                          {boundary <= timelineEnd && (
+                            <line x1={x2} y1={timelineY - 8} x2={x2} y2={timelineY + 8} stroke="#9ca3af" strokeWidth="1" />
+                          )}
+
+                          {/* Quarter label */}
+                          <text x={midX} y={timelineY - 12} fontSize="9" textAnchor="middle" fill="#6b7280">
+                            {year}Q{quarter}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Accident date */}
+                    <circle cx={timeScale(claimInfo.accidentDate)} cy={timelineY} r="6" fill="#ef4444" stroke="white" strokeWidth="2" />
+                    <text x={timeScale(claimInfo.accidentDate)} y={timelineY + 20} fontSize="10" textAnchor="middle" fill="#374151">Accident</text>
+
+                    {/* Notification */}
+                    <circle cx={timeScale(claimInfo.notifyDate)} cy={timelineY} r="5" fill="white" stroke="#3b82f6" strokeWidth="2" />
+                    <text x={timeScale(claimInfo.notifyDate)} y={timelineY + 20} fontSize="10" textAnchor="middle" fill="#374151">Notify</text>
+
+                    {/* Payments */}
+                    {selectedClaim.payments.map((payment, i) => {
+                      const x = timeScale(payment.date);
+                      return (
+                        <g key={i}>
+                          <g transform={`translate(${x}, ${timelineY})`}>
+                            <line x1="-3" y1="-3" x2="3" y2="3" stroke="#10b981" strokeWidth="2" />
+                            <line x1="-3" y1="3" x2="3" y2="-3" stroke="#10b981" strokeWidth="2" />
+                          </g>
+                          <text x={x} y={timelineY + 20} fontSize="9" textAnchor="middle" fill="#374151">${payment.amount}</text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Settlement */}
+                    <g transform={`translate(${timeScale(claimInfo.settlementDate)}, ${timelineY})`}>
+                      <line x1="-4" y1="-4" x2="4" y2="4" stroke="#dc2626" strokeWidth="3" />
+                      <line x1="-4" y1="4" x2="4" y2="-4" stroke="#dc2626" strokeWidth="3" />
+                    </g>
+                    <text x={timeScale(claimInfo.settlementDate)} y={timelineY + 20} fontSize="10" textAnchor="middle" fill="#374151">Settlement</text>
+                  </>
+                );
+              })()}
+            </svg>
+          </div>
+        </div>
+
+        {/* Payment Details (Expandable) */}
+        <div className="bg-blue-50 p-4 rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-medium">Payment Details</div>
+            <button
+              onClick={() => setShowPaymentDetails(!showPaymentDetails)}
+              className="text-xs px-3 py-1 bg-blue-200 hover:bg-blue-300 rounded-full transition-colors"
+            >
+              {showPaymentDetails ? 'Hide' : 'Show'} Details
+            </button>
+          </div>
+
+          {showPaymentDetails && (
+            <div className="bg-white rounded border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Event</th>
+                    <th className="px-3 py-2 text-left font-medium">Date</th>
+                    <th className="px-3 py-2 text-center font-medium">Calendar Quarter</th>
+                    <th className="px-3 py-2 text-right font-medium">Amount</th>
+                    <th className="px-3 py-2 text-center font-medium">Dev Quarter</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    // Create combined list of all events
+                    const events = [
+                      {
+                        type: 'accident',
+                        date: claimInfo.accidentDate,
+                        label: 'Accident',
+                        amount: null
+                      },
+                      {
+                        type: 'notification',
+                        date: claimInfo.notifyDate,
+                        label: 'Notification',
+                        amount: null
+                      },
+                      ...selectedClaim.payments.map((payment, i) => ({
+                        type: 'payment',
+                        date: payment.date,
+                        label: `#${i + 1}`,
+                        amount: payment.amount
+                      })),
+                      {
+                        type: 'settlement',
+                        date: claimInfo.settlementDate,
+                        label: 'Settlement',
+                        amount: null
+                      }
+                    ];
+
+                    // Sort by date
+                    events.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+                    return events.map((event, i) => {
+                      const eventQuarter = getQuarterInfo(event.date, claimInfo.accidentDate);
+                      const adjustedDevQuarter = eventQuarter.developmentQuarter + (oneBasedDevQuarters ? 1 : 0);
+                      const isEvent = event.type !== 'payment';
+
+                      return (
+                        <tr key={i} className={`border-t border-gray-100 ${isEvent ? 'bg-gray-50' : ''}`}>
+                          <td className={`px-3 py-2 ${isEvent ? 'font-medium text-gray-700' : 'text-gray-600'}`}>
+                            {event.label}
+                          </td>
+                          <td className="px-3 py-2">{toISODate(event.date)}</td>
+                          <td className="px-3 py-2 text-center font-mono">{eventQuarter.quarterKey}</td>
+                          <td className="px-3 py-2 text-right font-medium">
+                            {event.amount !== null ? `$${event.amount}` : ''}
+                          </td>
+                          <td className="px-3 py-2 text-center font-mono">Q{adjustedDevQuarter}</td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Quarterly aggregation */}
+        <div className="bg-yellow-50 p-4 rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-medium">Quarterly Aggregation</div>
+            <button
+              onClick={() => setShowQuarterlyAggregation(!showQuarterlyAggregation)}
+              className="text-xs px-3 py-1 bg-yellow-200 hover:bg-yellow-300 rounded-full transition-colors"
+            >
+              {showQuarterlyAggregation ? 'Hide' : 'Show'} Aggregation
+            </button>
+          </div>
+
+          {showQuarterlyAggregation && (
+          <div className="grid grid-cols-2 gap-6">
+            {/* Left half - Visual bars */}
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-gray-600 mb-2">Payment Composition</div>
+              {quarters.map((quarter, i) => (
+                <div key={i} className="flex items-center gap-4 p-2 bg-white rounded border">
+                  <div className="w-16 text-sm font-mono">
+                    Dev Q{quarter.developmentQuarter}
+                  </div>
+                  <div className="w-20 text-sm">
+                    {quarter.quarterKey}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-6 rounded overflow-hidden relative" style={{ width: `${(quarter.totalAmount / maxAmount) * 100}%`, minWidth: '60px' }}>
+                        {quarter.payments.map((payment, paymentIdx) => {
+                          const colors = ['#fbbf24', '#f59e0b', '#d97706', '#b45309', '#92400e', '#78350f', '#451a03'];
+                          const color = colors[paymentIdx % colors.length];
+                          const paymentWidth = (payment.amount / quarter.totalAmount) * 100;
+                          return (
+                            <div
+                              key={paymentIdx}
+                              className="h-full flex items-center justify-center relative"
+                              style={{
+                                backgroundColor: color,
+                                width: `${paymentWidth}%`,
+                                minWidth: '2px'
+                              }}
+                              title={`Payment ${paymentIdx + 1}: $${payment.amount} on ${toISODate(payment.date)}`}
+                            >
+                              {paymentWidth > 8 && (
+                                <span className="text-xs font-medium text-white drop-shadow-sm">
+                                  ${payment.amount}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Right half - Summary table */}
+            <div>
+              <div className="text-xs font-medium text-gray-600 mb-2">Quarterly Summary</div>
+              <div className="bg-white rounded border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Quarter</th>
+                      <th className="px-3 py-2 text-right font-medium">Sum</th>
+                      <th className="px-3 py-2 text-right font-medium">Count</th>
+                      <th className="px-3 py-2 text-right font-medium">Min</th>
+                      <th className="px-3 py-2 text-right font-medium">Avg</th>
+                      <th className="px-3 py-2 text-right font-medium">Max</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quarters.map((quarter, i) => {
+                      const payments = quarter.payments;
+                      const amounts = payments.map(p => p.amount);
+                      const min = amounts.length > 0 ? Math.min(...amounts) : null;
+                      const max = amounts.length > 0 ? Math.max(...amounts) : null;
+                      const avg = amounts.length > 0 ? (amounts.reduce((a, b) => a + b, 0) / amounts.length).toFixed(1) : null;
+
+                      return (
+                        <tr key={i} className="border-t border-gray-100">
+                          <td className="px-3 py-2 font-mono">Dev Q{quarter.developmentQuarter}</td>
+                          <td className="px-3 py-2 text-right font-medium">${quarter.totalAmount}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{quarter.paymentCount}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{min !== null ? `$${min}` : '-'}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{avg !== null ? `$${avg}` : '-'}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{max !== null ? `$${max}` : '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          )}
+        </div>
+
+        {/* Cumulative View */}
+        <div className="bg-green-50 p-4 rounded-lg">
+          <div className="text-sm font-medium mb-3">Cumulative View</div>
+          <div className="bg-white rounded border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Quarter</th>
+                  <th className="px-3 py-2 text-right font-medium">Total Paid</th>
+                  <th className="px-3 py-2 text-right font-medium">Avg Payment</th>
+                  <th className="px-3 py-2 text-right font-medium">Max Payment</th>
+                  <th className="px-3 py-2 text-right font-medium">Payment Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  let cumulativeSum = 0;
+                  let cumulativeCount = 0;
+                  let allPayments = [];
+
+                  return quarters.map((quarter, i) => {
+                    cumulativeSum += quarter.totalAmount;
+                    cumulativeCount += quarter.paymentCount;
+
+                    // Add current quarter's individual payments to running list
+                    allPayments = allPayments.concat(quarter.payments.map(p => p.amount));
+
+                    const avgPayment = allPayments.length > 0 ? (cumulativeSum / allPayments.length) : 0;
+                    const maxPayment = allPayments.length > 0 ? Math.max(...allPayments) : 0;
+
+                    return (
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="px-3 py-2 font-mono">Dev Q{quarter.developmentQuarter}</td>
+                        <td className="px-3 py-2 text-right font-medium">${cumulativeSum}</td>
+                        <td className="px-3 py-2 text-right font-medium">{avgPayment > 0 ? `$${avgPayment.toFixed(1)}` : '-'}</td>
+                        <td className="px-3 py-2 text-right font-medium">{maxPayment > 0 ? `$${maxPayment}` : '-'}</td>
+                        <td className="px-3 py-2 text-right font-medium">{cumulativeCount}</td>
+                      </tr>
+                    );
+                  });
+                })()}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-xs text-gray-600 mt-2">
+            <strong>Code variables:</strong> Total Paid = <code>total_payment_size</code>, Avg Payment = <code>average_payment_size</code>, Max Payment = <code>max_payment_size</code>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // -------------------- Render --------------------
   return (
     <div className='w-full relative'>
@@ -556,6 +1095,7 @@ function ClaimsDiagram() {
           Each horizontal line represents one claim as it develops over time from notification to settlement. Circles mark notification; X marks indicate payments; the final X is the settlement.
           Colored by dataset: <span style={{ color: COLORS.train }}>Train</span>, <span style={{ color: COLORS.val }}>Validation</span>, <span style={{ color: COLORS.test }}>Test</span>.{' '}<span className='opacity-70'>Claims that settle on or after the Test cutoff appear in grey as Unused.</span>{' '}Censored segments end with a square at the dataset cutoff; the continuation is dashed and faded.
         </div>
+
         <div className='w-4/5 overflow-auto rounded-2xl ring-1 ring-gray-300'>
           <svg ref={svgRef} xmlns='http://www.w3.org/2000/svg' viewBox={`0 0 ${width} ${height}`} width='100%' role='img'>
             <rect x={0} y={0} width={width} height={height} fill='white' />
@@ -568,13 +1108,13 @@ function ClaimsDiagram() {
 
             {/* Axis */}
             <g>
-              <line x1={margins.left} y1={margins.top + contentHeight + 10} x2={width - margins.right} y2={margins.top + contentHeight + 10} stroke='#111827' strokeWidth={1} />
+              <line x1={margins.left} y1={margins.top + 10 + contentHeight + 10} x2={width - margins.right} y2={margins.top + 10 + contentHeight + 10} stroke='#111827' strokeWidth={1} />
               {ticks.map((t, i) => {
                 const x = xScale(t);
                 return (
                   <g key={i}>
-                    <line x1={x} y1={margins.top + contentHeight + 6} x2={x} y2={margins.top + contentHeight + 14} stroke='#111827' />
-                    <text x={x} y={margins.top + contentHeight + 30} fontSize={12} textAnchor='middle' fill='#111827'>
+                    <line x1={x} y1={margins.top + 10 + contentHeight + 6} x2={x} y2={margins.top + 10 + contentHeight + 14} stroke='#111827' />
+                    <text x={x} y={margins.top + 10 + contentHeight + 30} fontSize={12} textAnchor='middle' fill='#111827'>
                       {formatTick(t)}
                     </text>
                   </g>
@@ -591,7 +1131,7 @@ function ClaimsDiagram() {
                 const x = xScale(c.x);
                 return (
                   <g key={idx}>
-                    <line x1={x} y1={margins.top - 6} x2={x} y2={margins.top + contentHeight + 10} stroke='#6b7280' strokeDasharray='4 4' />
+                    <line x1={x} y1={margins.top - 6} x2={x} y2={margins.top + 10 + contentHeight + 10} stroke='#6b7280' strokeDasharray='4 4' />
                     <text x={x - 6} y={margins.top - 8} fontSize={11} fill='#6b7280' textAnchor='end'>
                       {c.label}
                     </text>
@@ -612,10 +1152,28 @@ function ClaimsDiagram() {
                 const settlementClamped = new Date(Math.min(c.settlement.getTime(), testCut.getTime()));
 
                 return (
-                  <g key={idx}>
+                  <g
+                    key={idx}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setSelectedClaimIndex(idx)}
+                  >
                     <text x={margins.left - 8} y={y + 4} fontSize={10} textAnchor='end' opacity={0.5}>
                       {idx + 1}
                     </text>
+
+                    {/* Selection highlight */}
+                    {selectedClaimIndex === idx && (
+                      <rect
+                        x={margins.left - 12}
+                        y={y - 10}
+                        width={width - margins.left - margins.right + 24}
+                        height={20}
+                        fill="rgba(59, 130, 246, 0.1)"
+                        stroke="rgb(59, 130, 246)"
+                        strokeWidth={1}
+                        rx={4}
+                      />
+                    )}
 
                     {/* Primary row observed segment */}
                     {!r.isDuplicate && c.notify < observedEndClamped && (
@@ -766,9 +1324,9 @@ function ClaimsDiagram() {
               <button onClick={() => setSidebarOpen(!sidebarOpen)} className='px-3 py-2 rounded-xl ring-1 ring-gray-300 hover:bg-gray-50'>
                 {sidebarOpen ? 'Hide Controls' : 'Show Controls'}
               </button>
-              <button onClick={downloadSVG} className='px-3 py-2 rounded-xl ring-1 ring-gray-300 hover:bg-gray-50'>
+              {/* <button onClick={downloadSVG} className='px-3 py-2 rounded-xl ring-1 ring-gray-300 hover:bg-gray-50'>
                 Download SVG
-              </button>
+              </button> */}
               <button onClick={() => setSeedText(String(Date.now()))} className='px-3 py-2 rounded-xl ring-1 ring-gray-300 hover:bg-gray-50' title='Randomise dataset'>Randomise dataset</button>
             </div>
             <div />
@@ -791,6 +1349,11 @@ function ClaimsDiagram() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Quarterly Preprocessing Section */}
+        <div className='w-full max-w-6xl mx-auto p-4 mt-8 border-t border-gray-200'>
+          <QuarterlyPreprocessingView claimData={quarterlyData} />
         </div>
       </div>
 
