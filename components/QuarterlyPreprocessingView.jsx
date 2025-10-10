@@ -74,7 +74,7 @@ function QuarterlyPreprocessingView({
         />
 
         {hasInflationAdjustment && (
-          <PriceIndexAdjustment 
+          <InflationAdjustment 
             quarters={quarters}
             claimInfo={claimInfo}
             endDate={endDate}

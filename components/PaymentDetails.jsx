@@ -24,8 +24,12 @@ function PaymentDetails({
       </div>
 
       {showPaymentDetails && (
-        <div className="bg-white rounded border overflow-hidden">
-          <table className="w-full text-sm">
+        <>
+          <div className="text-sm text-gray-700 mb-3">
+            The series of payments made to the insured are spread out over many days. However reserving datasets often don't keep this daily-level view of the data, but instead summarise the payments by month, quarter, or year.
+          </div>
+          <div className="bg-white rounded border overflow-hidden">
+            <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">Event</th>
@@ -91,6 +95,7 @@ function PaymentDetails({
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );

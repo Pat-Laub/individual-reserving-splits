@@ -24,7 +24,11 @@ function QuarterlyAggregation({
       </div>
 
       {showQuarterlyAggregation && (
-        <div className="grid grid-cols-2 gap-6">
+        <>
+          <div className="text-sm text-gray-700 mb-3">
+            This section simulates the typical aggregation of payments that is done from the raw payment history (daily) into quarters.
+          </div>
+          <div className="grid grid-cols-2 gap-6">
           {/* Left half - Visual bars */}
           <div className="space-y-2">
             <div className="text-xs font-medium text-gray-600 mb-2">Payment Composition</div>
@@ -82,29 +86,16 @@ function QuarterlyAggregation({
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Quarter</th>
                     <th className="px-3 py-2 text-right font-medium">Sum</th>
-                    <th className="px-3 py-2 text-right font-medium">Count</th>
-                    <th className="px-3 py-2 text-right font-medium">Min</th>
-                    <th className="px-3 py-2 text-right font-medium">Avg</th>
-                    <th className="px-3 py-2 text-right font-medium">Max</th>
                   </tr>
                 </thead>
                 <tbody>
                   {quarters.map((quarter, i) => {
-                    const payments = quarter.payments;
-                    const nominalAmounts = payments.map(p => p.nominalAmount || p.amount);
-                    const min = nominalAmounts.length > 0 ? Math.min(...nominalAmounts) : null;
-                    const max = nominalAmounts.length > 0 ? Math.max(...nominalAmounts) : null;
-                    const avg = nominalAmounts.length > 0 ? (nominalAmounts.reduce((a, b) => a + b, 0) / nominalAmounts.length) : null;
                     const quarterNominalAmount = quarter.nominalAmount || quarter.totalAmount;
 
                     return (
                       <tr key={i} className="border-t border-gray-100">
                         <td className="px-3 py-2 font-mono">Dev Q{quarter.developmentQuarter}</td>
                         <td className="px-3 py-2 text-right font-medium">${quarterNominalAmount.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-right text-gray-600">{quarter.paymentCount}</td>
-                        <td className="px-3 py-2 text-right text-gray-600">{min !== null ? `$${min.toFixed(2)}` : '-'}</td>
-                        <td className="px-3 py-2 text-right text-gray-600">{avg !== null ? `$${avg.toFixed(2)}` : '-'}</td>
-                        <td className="px-3 py-2 text-right text-gray-600">{max !== null ? `$${max.toFixed(2)}` : '-'}</td>
                       </tr>
                     );
                   })}
@@ -113,6 +104,7 @@ function QuarterlyAggregation({
             </div>
           </div>
         </div>
+        </>
       )}
     </div>
   );

@@ -1,7 +1,7 @@
-// PriceIndexAdjustment Component
-// Displays price index adjustment visualization and calculations
+// InflationAdjustment Component
+// Displays inflation adjustment visualization and calculations
 
-function PriceIndexAdjustment({ 
+function InflationAdjustment({ 
   quarters, 
   claimInfo, 
   endDate, 
@@ -14,7 +14,10 @@ function PriceIndexAdjustment({
 
   return (
     <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-      <div className="text-sm font-medium mb-3 text-orange-900">Price Index Adjustment</div>
+      <div className="text-sm font-medium mb-3 text-orange-900">Inflation Adjustment</div>
+      <div className="text-sm text-orange-800 mb-3">
+        We typically make all the monetary values be in terms of today's money, or at least in terms of the currency's worth at the final quarter in the dataset.
+      </div>
       <div className="text-sm text-orange-800 mb-3">
         Because quarterly aggregation loses exact payment dates, we assume payments occur at the <strong>middle</strong> of each quarter.
         The index we use at mid‑quarter is the geometric mean of neighbouring end‑of‑quarter indices:
@@ -65,7 +68,7 @@ function PriceIndexAdjustment({
       <div className="grid md:grid-cols-2 gap-4">
         {/* Index values & factors for used quarters */}
         <div>
-          <div className="text-xs font-medium text-orange-800 mb-2">Index Values & Adjustment Factors (by aggregated quarters)</div>
+          <div className="text-xs font-medium text-orange-800 mb-2">Adjusting payments for inflation</div>
           <div className="bg-white rounded border overflow-hidden">
             <table className="w-full text-xs">
               <thead className="bg-gray-50">
@@ -159,4 +162,4 @@ function PriceIndexAdjustment({
 }
 
 // Make the component globally available
-window.PriceIndexAdjustment = PriceIndexAdjustment;
+window.InflationAdjustment = InflationAdjustment;
