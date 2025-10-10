@@ -19,15 +19,28 @@
 <body>
     <div id="root"></div>
     
-    <script type="text/babel" src="quarterly_preprocessing_component.jsx"></script>
-    <script type="text/babel" src="claims_preprocessing_diagram.jsx"></script>
+    <!-- Load utilities first -->
+    <script src="utils/utilities.js"></script>
+    
+    <!-- Load component files in dependency order -->
+    <script type="text/babel" src="components/PreprocessingStepsOverview.jsx"></script>
+    <script type="text/babel" src="components/StaticCovariates.jsx"></script>
+    <script type="text/babel" src="components/ContinuousTimeline.jsx"></script>
+    <script type="text/babel" src="components/PaymentDetails.jsx"></script>
+    <script type="text/babel" src="components/QuarterlyAggregation.jsx"></script>
+    <script type="text/babel" src="components/PriceIndexAdjustment.jsx"></script>
+    <script type="text/babel" src="components/OutstandingLiabilityCalculation.jsx"></script>
+    <script type="text/babel" src="components/DevelopmentPeriodGeneration.jsx"></script>
+    <script type="text/babel" src="components/QuarterlyPreprocessingView.jsx"></script>
+    <script type="text/babel" src="components/ClaimsPreprocessingDiagram.jsx"></script>
+    
     <script type="text/babel">
         const { useState, useMemo, useRef, useEffect } = React;
         
         function App() {
             return (
                 <div className="min-h-screen bg-gray-50">
-                    <ClaimsDiagram />
+                    <ClaimsPreprocessingDiagram />
                 </div>
             );
         }
