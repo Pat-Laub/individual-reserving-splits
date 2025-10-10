@@ -2,10 +2,21 @@
 // Displays the continuous timeline visualization with accident, notification, payments, and settlement
 
 function ContinuousTimeline({ claimInfo, selectedClaim }) {
+  const [show, setShow] = React.useState(true);
+  
   return (
     <div className="bg-blue-50 p-4 rounded-lg">
-      <div className="text-sm font-medium mb-3">Continuous Timeline</div>
-      <div className="relative">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-medium">Continuous Timeline</div>
+        <button
+          onClick={() => setShow(!show)}
+          className="text-xs px-3 py-1 bg-blue-200 hover:bg-blue-300 rounded-full transition-colors"
+        >
+          {show ? 'Hide' : 'Show'}
+        </button>
+      </div>
+      {show && (
+        <div className="relative">
         <svg width="100%" height="100" viewBox="0 0 800 100">
           {(() => {
             // Calculate timeline bounds
@@ -114,6 +125,7 @@ function ContinuousTimeline({ claimInfo, selectedClaim }) {
           })()}
         </svg>
       </div>
+      )}
     </div>
   );
 }

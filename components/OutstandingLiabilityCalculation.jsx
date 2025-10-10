@@ -10,11 +10,21 @@ function OutstandingLiabilityCalculation({
 }) {
   // Use utilities from global scope
   const { getQuarterInfo, formatCurrency } = window.utils;
+  const [show, setShow] = React.useState(true);
 
   return (
     <div className="bg-green-50 p-4 rounded-lg">
-      <div className="text-sm font-medium mb-3">Calculate Outstanding Claim Liability</div>
-      {(() => {
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-medium">Calculate Outstanding Claim Liability</div>
+        <button
+          onClick={() => setShow(!show)}
+          className="text-xs px-3 py-1 bg-green-200 hover:bg-green-300 rounded-full transition-colors"
+        >
+          {show ? 'Hide' : 'Show'}
+        </button>
+      </div>
+      {show && (
+      (() => {
         const observationQuarterKey = getQuarterInfo(endDate, claimInfo.accidentDate).quarterKey;
         const targetPI = priceIndexMap ? priceIndexMap[observationQuarterKey] : null;
 
@@ -66,7 +76,8 @@ function OutstandingLiabilityCalculation({
             </div>
           </>
         );
-      })()}
+      })()
+      )}
     </div>
   );
 }

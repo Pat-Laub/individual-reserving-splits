@@ -19,7 +19,7 @@ function PaymentDetails({
           onClick={() => setShowPaymentDetails(!showPaymentDetails)}
           className="text-xs px-3 py-1 bg-blue-200 hover:bg-blue-300 rounded-full transition-colors"
         >
-          {showPaymentDetails ? 'Hide' : 'Show'} Details
+          {showPaymentDetails ? 'Hide' : 'Show'}
         </button>
       </div>
 

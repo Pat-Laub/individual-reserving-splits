@@ -11,14 +11,25 @@ function InflationAdjustment({
 }) {
   // Use utilities from global scope
   const { getQuarterInfo, formatCurrency } = window.utils;
+  const [show, setShow] = React.useState(true);
 
   return (
     <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-      <div className="text-sm font-medium mb-3 text-orange-900">Inflation Adjustment</div>
-      <div className="text-sm text-orange-800 mb-3">
-        We typically make all the monetary values be in terms of today's money, or at least in terms of the currency's worth at the final quarter in the dataset.
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-medium text-orange-900">Inflation Adjustment</div>
+        <button
+          onClick={() => setShow(!show)}
+          className="text-xs px-3 py-1 bg-orange-200 hover:bg-orange-300 rounded-full transition-colors"
+        >
+          {show ? 'Hide' : 'Show'}
+        </button>
       </div>
-      <div className="text-sm text-orange-800 mb-3">
+      {show && (
+        <>
+          <div className="text-sm text-orange-800 mb-3">
+            We typically make all the monetary values be in terms of today's money, or at least in terms of the currency's worth at the final quarter in the dataset.
+          </div>
+          <div className="text-sm text-orange-800 mb-3">
         Because quarterly aggregation loses exact payment dates, we assume payments occur at the <strong>middle</strong> of each quarter.
         The index we use at mid‑quarter is the geometric mean of neighbouring end‑of‑quarter indices:
         <span className="ml-1 font-mono bg-orange-100 px-1 rounded">PI<sub>mid</sub>(q) = √[ PI<sub>eoq</sub>(q−1) · PI<sub>eoq</sub>(q) ]</span>.
@@ -157,6 +168,8 @@ function InflationAdjustment({
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

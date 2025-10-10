@@ -19,7 +19,7 @@ function QuarterlyAggregation({
           onClick={() => setShowQuarterlyAggregation(!showQuarterlyAggregation)}
           className="text-xs px-3 py-1 bg-yellow-200 hover:bg-yellow-300 rounded-full transition-colors"
         >
-          {showQuarterlyAggregation ? 'Hide' : 'Show'} Aggregation
+          {showQuarterlyAggregation ? 'Hide' : 'Show'}
         </button>
       </div>
 

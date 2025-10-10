@@ -2,10 +2,21 @@
 // Displays an overview of all preprocessing steps
 
 function PreprocessingStepsOverview({ hasInflationAdjustment }) {
+  const [show, setShow] = React.useState(true);
+  
   return (
     <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-      <div className="text-sm font-medium text-blue-900 mb-2">Key Preprocessing Steps:</div>
-      <div className="space-y-1 text-sm text-blue-800">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-medium text-blue-900">Key Preprocessing Steps:</div>
+        <button
+          onClick={() => setShow(!show)}
+          className="text-xs px-3 py-1 bg-blue-200 hover:bg-blue-300 rounded-full transition-colors"
+        >
+          {show ? 'Hide' : 'Show'}
+        </button>
+      </div>
+      {show && (
+        <div className="space-y-1 text-sm text-blue-800">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
           <span><strong>Step 1:</strong> Continuous Timeline - View claim lifecycle from accident to settlement</span>
@@ -36,7 +47,8 @@ function PreprocessingStepsOverview({ hasInflationAdjustment }) {
           <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
           <span><strong>Step {hasInflationAdjustment ? '7' : '6'}:</strong> Development Period & Training Row Generation - Create training rows for each observation period</span>
         </div>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

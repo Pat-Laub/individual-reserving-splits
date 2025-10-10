@@ -11,15 +11,26 @@ function DevelopmentPeriodGeneration({
 }) {
   // Use utilities from global scope
   const { getQuarterInfo, formatCurrency } = window.utils;
+  const [show, setShow] = React.useState(true);
 
   return (
     <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-      <div className="text-sm font-medium mb-3 text-purple-900">Development Period & Training Row Generation</div>
-      <div className="text-sm text-purple-800 mb-3">
-        Each claim generates multiple training rows, one for each development quarter where we can observe the claim (up to the observation cutoff).
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-medium text-purple-900">Development Period & Training Row Generation</div>
+        <button
+          onClick={() => setShow(!show)}
+          className="text-xs px-3 py-1 bg-purple-200 hover:bg-purple-300 rounded-full transition-colors"
+        >
+          {show ? 'Hide' : 'Show'}
+        </button>
       </div>
+      {show && (
+        <>
+          <div className="text-sm text-purple-800 mb-3">
+            Each claim generates multiple training rows, one for each development quarter where we can observe the claim (up to the observation cutoff).
+          </div>
 
-      {(() => {
+          {(() => {
         // Calculate key metrics
         const notifyQuarter = getQuarterInfo(claimInfo.notifyDate, claimInfo.accidentDate).developmentQuarter;
         const settlementQuarter = getQuarterInfo(claimInfo.settlementDate, claimInfo.accidentDate).developmentQuarter;
@@ -235,6 +246,8 @@ function DevelopmentPeriodGeneration({
           </div>
         );
       })()}
+      </>
+      )}
     </div>
   );
 }
