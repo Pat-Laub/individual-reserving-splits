@@ -48,53 +48,24 @@ function getQuarterlyInflationRate(quarterKey, seed = 1) {
 }
 
 // Inflation adjustment function using random quarterly rates
-function adjustForInflation(nominalAmount, paymentDate, observationEndDate, seed = 1) {
-  if (!observationEndDate || !paymentDate) return nominalAmount;
-
-  const paymentQuarter = getQuarterInfo(paymentDate, paymentDate);
-  const observationQuarter = getQuarterInfo(observationEndDate, paymentDate);
-
-  // If payment is after observation end, no adjustment needed
-  if (paymentDate >= observationEndDate) return nominalAmount;
-
-  // Calculate quarters between payment and observation end
-  let currentDate = new Date(paymentDate);
-  let adjustedAmount = nominalAmount;
-
-  while (currentDate < observationEndDate) {
-    const currentQuarter = getQuarterInfo(currentDate, currentDate); // Use currentDate as reference for calendar quarter
-    const calendarQuarterKey = `${currentQuarter.calendarYear}Q${currentQuarter.calendarQuarter}`;
-    const inflationRate = getQuarterlyInflationRate(calendarQuarterKey, seed);
-    adjustedAmount *= (1 + inflationRate);
-
-    // Move to next quarter
-    currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 3, currentDate.getDate());
-  }
-
-  return adjustedAmount;
+function adjustForInflation(nominalAmount, paymentDate, observationEndDate, priceIndexMap) {
+  // Price Index based adjustment
+  return adjustUsingPriceIndex(nominalAmount, paymentDate, observationEndDate, priceIndexMap);
 }
 
 // Calculate adjustment factor from source quarter to target quarter
-function calculateAdjustmentFactor(sourceQuarter, targetQuarter, seed = 1) {
+function calculateAdjustmentFactor(sourceQuarter, targetQuarter, priceIndexMap) {
   if (sourceQuarter === targetQuarter) return 1.0;
-
-  // Parse quarters (e.g., "2022Q3" -> {year: 2022, quarter: 3})
   const parseQuarter = (quarterStr) => {
     const match = quarterStr.match(/(\d{4})Q(\d)/);
     return { year: parseInt(match[1]), quarter: parseInt(match[2]) };
   };
-
   const source = parseQuarter(sourceQuarter);
   const target = parseQuarter(targetQuarter);
-
-  // Create date from quarter
-  const quarterToDate = (q) => new Date(q.year, (q.quarter - 1) * 3, 15); // Mid-month of first month in quarter
-
+  const quarterToDate = (q) => new Date(Date.UTC(q.year, (q.quarter - 1) * 3, 1));
   const sourceDate = quarterToDate(source);
   const targetDate = quarterToDate(target);
-
-  // Use the existing inflation adjustment function
-  return adjustForInflation(1.0, sourceDate, targetDate, seed);
+  return adjustForInflation(1.0, sourceDate, targetDate, priceIndexMap);
 }
 
 // Format currency with 2 decimal places
@@ -124,6 +95,73 @@ function mulberry32(a) {
 }
 
 const MS_PER_DAY = 86400000;
+// -------------------- Price Index (replaces per-quarter inflation rates) --------------------
+// We "make up" a reproducible Price Index by quarter between the start and end dates.
+// The adjustment factor is: AdjustmentFactor(sourceQuarter) = PriceIndex[targetQuarter] / PriceIndex[sourceQuarter].
+
+function startOfQuarterUTC(d) {
+  const y = d.getUTCFullYear();
+  const qStartMonth = Math.floor(d.getUTCMonth() / 3) * 3;
+  return new Date(Date.UTC(y, qStartMonth, 1));
+}
+function addQuartersUTC(d, n) {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 3 * n, 1));
+}
+function quarterKeyFromUTC(d) {
+  const y = d.getUTCFullYear();
+  const q = Math.floor(d.getUTCMonth() / 3) + 1;
+  return `${y}Q${q}`;
+}
+
+/**
+ * Generate a deterministic quarterly Price Index time series between startDate and endDate (inclusive, by quarter).
+ * Base ~100 at the first quarter, then apply a small positive drift with light noise.
+ * Returns: { series: [{date, quarterKey, index}], map: { [quarterKey]: index } }
+ */
+function generatePriceIndexSeries(startDate, endDate, seed = 1) {
+  const series = [];
+  const map = {};
+  const rnd = mulberry32((seed ^ 0x9e3779b9) >>> 0);
+
+  let q = startOfQuarterUTC(new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1)));
+  const lastQ = startOfQuarterUTC(new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), 1)));
+
+  // Start around 100
+  let idx = 100;
+  while (q <= lastQ) {
+    // Drift ~ +1.0% to +1.6% per quarter, plus small noise [-0.4%, +0.4%]
+    const drift = 0.013 + (rnd() * 0.006);     // [1.3%, 1.9%]
+    const noise = (rnd() - 0.5) * 0.008;       // [-0.4%, +0.4%]
+    idx = Math.max(60, idx * (1 + drift + noise));
+    const k = quarterKeyFromUTC(q);
+    series.push({ date: new Date(q), quarterKey: k, index: idx });
+    map[k] = idx;
+    q = addQuartersUTC(q, 1);
+  }
+
+  return { series, map };
+}
+
+/** Adjust a nominal amount from paymentDate's quarter to targetDate's quarter using the Price Index. */
+function adjustUsingPriceIndex(nominalAmount, paymentDate, targetDate, priceIndexMap) {
+  if (!paymentDate || !targetDate || !priceIndexMap) return nominalAmount;
+  const srcKey = getQuarterInfo(paymentDate, paymentDate).quarterKey;
+  const tgtKey = getQuarterInfo(targetDate, targetDate).quarterKey;
+  const srcIdx = priceIndexMap[srcKey];
+  const tgtIdx = priceIndexMap[tgtKey];
+  if (!srcIdx || !tgtIdx) return nominalAmount;
+  return nominalAmount * (tgtIdx / srcIdx);
+}
+
+/** Adjustment factor between two quarter keys using the Price Index map. */
+function calculateAdjustmentFactorByIndex(sourceQuarterKey, targetQuarterKey, priceIndexMap) {
+  if (!priceIndexMap) return 1.0;
+  const s = priceIndexMap[sourceQuarterKey];
+  const t = priceIndexMap[targetQuarterKey];
+  if (!s || !t) return 1.0;
+  return t / s;
+}
+
 const toISODate = (d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString().slice(0, 10);
 function clampDate(d, min, max) {
   const t = d.getTime();
@@ -227,7 +265,7 @@ function getQuarterInfo(date, referenceDate) {
   };
 }
 
-function aggregateClaimToQuarters(claim, oneBasedDevQuarters = false, observationEndDate = null) {
+function aggregateClaimToQuarters(claim, oneBasedDevQuarters = false, observationEndDate = null, priceIndexMap = null) {
   // Validate claim object
   if (!claim || !claim.accident || !claim.notify || !claim.settlement || !claim.staticCovariates || !claim.payments) {
     return {
@@ -304,33 +342,25 @@ function aggregateClaimToQuarters(claim, oneBasedDevQuarters = false, observatio
     if (existingQuarter) {
       // Apply inflation adjustment to quarterly aggregated amounts if observationEndDate is provided
       if (observationEndDate) {
-        // Use the middle of the quarter as the representative date for inflation adjustment
-        const quarterStart = new Date(existingQuarter.year, (existingQuarter.quarter - 1) * 3, 1);
-        const quarterMiddle = new Date(quarterStart.getTime() + (90 * 24 * 60 * 60 * 1000) / 2); // ~45 days
+        // Adjust each payment using the Price Index and sum
+        const adjustedPayments = existingQuarter.payments.map(payment => {
+          const adjustedPaymentAmount = adjustUsingPriceIndex(payment.amount, payment.date, observationEndDate, priceIndexMap);
+          const safeAdjustedPaymentAmount = isNaN(adjustedPaymentAmount) ? payment.amount : adjustedPaymentAmount;
+          return {
+            ...payment,
+            nominalAmount: payment.amount,
+            amount: safeAdjustedPaymentAmount,
+            inflationAdjusted: true
+          };
+        });
+        const adjustedTotal = adjustedPayments.reduce((s, p) => s + p.amount, 0);
 
-        const nominalAmount = existingQuarter.totalAmount;
-        const adjustedAmount = adjustForInflation(nominalAmount, quarterMiddle, observationEndDate, 1);
-
-        // Ensure we don't get NaN values
-        const safeAdjustedAmount = isNaN(adjustedAmount) ? nominalAmount : adjustedAmount;
-
-        // Create adjusted quarter data
         const adjustedQuarter = {
           ...existingQuarter,
-          nominalAmount: nominalAmount,
-          totalAmount: safeAdjustedAmount,
+          nominalAmount: existingQuarter.totalAmount,
+          totalAmount: isNaN(adjustedTotal) ? existingQuarter.totalAmount : adjustedTotal,
           inflationAdjusted: true,
-          // Also adjust individual payment amounts for display purposes
-          payments: existingQuarter.payments.map(payment => {
-            const adjustedPaymentAmount = adjustForInflation(payment.amount, payment.date, observationEndDate, 1);
-            const safeAdjustedPaymentAmount = isNaN(adjustedPaymentAmount) ? payment.amount : adjustedPaymentAmount;
-            return {
-              ...payment,
-              nominalAmount: payment.amount,
-              amount: safeAdjustedPaymentAmount,
-              inflationAdjusted: true
-            };
-          })
+          payments: adjustedPayments
         };
         quarters.push(adjustedQuarter);
       } else {
@@ -582,6 +612,12 @@ function ClaimsDiagram() {
     [numClaims, startDate, endDate, minDurDays, maxDurDays, maxPartials, seed, dedupeMonthly]
   );
 
+
+  // ----- Price Index (made-up) for the displayed window -----
+  const { series: priceIndexSeries, map: priceIndexMap } = useMemo(() => {
+    return generatePriceIndexSeries(startDate, endDate, seed);
+  }, [startDate, endDate, seed]);
+
   const claims = autoClaims;
 
   // ---- One-time initialization of cutoffs based on simulated data ----
@@ -636,7 +672,7 @@ function ClaimsDiagram() {
 
   // Selected claim quarterly data
   const selectedClaim = selectedClaimIndex !== null ? claims[selectedClaimIndex] : null;
-  const quarterlyData = selectedClaim ? aggregateClaimToQuarters(selectedClaim, oneBasedDevQuarters, endDate) : null;
+  const quarterlyData = selectedClaim ? aggregateClaimToQuarters(selectedClaim, oneBasedDevQuarters, endDate, priceIndexMap) : null;
 
   // -------------------- Render --------------------
   return (
@@ -660,11 +696,10 @@ function ClaimsDiagram() {
                 <button
                   key={originalIndex}
                   onClick={() => setSelectedClaimIndex(originalIndex)}
-                  className={`px-3 py-2 rounded text-xs font-medium transition-colors ${
-                    selectedClaimIndex === originalIndex
+                  className={`px-3 py-2 rounded text-xs font-medium transition-colors ${selectedClaimIndex === originalIndex
                       ? 'bg-blue-600 text-white'
                       : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   {claim.staticCovariates.claimId}
                 </button>
@@ -687,6 +722,8 @@ function ClaimsDiagram() {
             showQuarterlyAggregation={showQuarterlyAggregation}
             setShowQuarterlyAggregation={setShowQuarterlyAggregation}
             selectedClaim={selectedClaim}
+            priceIndexMap={priceIndexMap}
+            priceIndexSeries={priceIndexSeries}
           />
         </div>
       </div>

@@ -1,7 +1,7 @@
 // QuarterlyPreprocessingView Component
 // Complete preprocessing visualization component extracted from claims_arrival_settlement_diagram_editable_svg.jsx
 
-function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBasedDevQuarters, endDate, showPaymentDetails, setShowPaymentDetails, showQuarterlyAggregation, setShowQuarterlyAggregation, selectedClaim }) {
+function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBasedDevQuarters, endDate, showPaymentDetails, setShowPaymentDetails, showQuarterlyAggregation, setShowQuarterlyAggregation, selectedClaim, priceIndexMap, priceIndexSeries }) {
   if (!claimData) {
     return (
       <div className="text-center py-8 text-gray-500">
@@ -247,7 +247,7 @@ function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBase
                       ...selectedClaim.payments.map((payment, i) => ({
                         type: 'payment',
                         date: payment.date,
-                        label: `#${i + 1}`,
+                        label: `Payment #${i + 1}`,
                         amount: payment.amount
                       })),
                       {
@@ -300,310 +300,274 @@ function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBase
           </div>
 
           {showQuarterlyAggregation && (
-          <div className="grid grid-cols-2 gap-6">
-            {/* Left half - Visual bars */}
-            <div className="space-y-2">
-              <div className="text-xs font-medium text-gray-600 mb-2">Payment Composition</div>
-              {quarters.map((quarter, i) => {
-                const quarterNominalAmount = quarter.nominalAmount || quarter.totalAmount;
-                return (
-                  <div key={i} className="flex items-center gap-4 p-2 bg-white rounded border">
-                    <div className="w-16 text-sm font-mono">
-                      Dev Q{quarter.developmentQuarter}
-                    </div>
-                    <div className="w-20 text-sm">
-                      {quarter.quarterKey}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-6 rounded overflow-hidden relative" style={{ width: `${(quarterNominalAmount / maxNominalAmount) * 100}%`, minWidth: '60px' }}>
-                          {quarter.payments.map((payment, paymentIdx) => {
-                            const colors = ['#fbbf24', '#f59e0b', '#d97706', '#b45309', '#92400e', '#78350f', '#451a03'];
-                            const color = colors[paymentIdx % colors.length];
-                            const paymentNominalAmount = payment.nominalAmount || payment.amount;
-                            const paymentWidth = (paymentNominalAmount / quarterNominalAmount) * 100;
-                            return (
-                              <div
-                                key={paymentIdx}
-                                className="h-full flex items-center justify-center relative"
-                                style={{
-                                  backgroundColor: color,
-                                  width: `${paymentWidth}%`,
-                                  minWidth: '2px'
-                                }}
-                                title={`Payment ${paymentIdx + 1}: $${paymentNominalAmount.toFixed(2)} on ${toISODate(payment.date)}`}
-                              >
-                                {paymentWidth > 8 && (
-                                  <span className="text-xs font-medium text-white drop-shadow-sm">
-                                    ${paymentNominalAmount.toFixed(2)}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
+            <div className="grid grid-cols-2 gap-6">
+              {/* Left half - Visual bars */}
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-gray-600 mb-2">Payment Composition</div>
+                {quarters.map((quarter, i) => {
+                  const quarterNominalAmount = quarter.nominalAmount || quarter.totalAmount;
+                  return (
+                    <div key={i} className="flex items-center gap-4 p-2 bg-white rounded border">
+                      <div className="w-16 text-sm font-mono">
+                        Dev Q{quarter.developmentQuarter}
+                      </div>
+                      <div className="w-20 text-sm">
+                        {quarter.quarterKey}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-6 rounded overflow-hidden relative" style={{ width: `${(quarterNominalAmount / maxNominalAmount) * 100}%`, minWidth: '60px' }}>
+                            {quarter.payments.map((payment, paymentIdx) => {
+                              const colors = ['#fbbf24', '#f59e0b', '#d97706', '#b45309', '#92400e', '#78350f', '#451a03'];
+                              const color = colors[paymentIdx % colors.length];
+                              const paymentNominalAmount = payment.nominalAmount || payment.amount;
+                              const paymentWidth = (paymentNominalAmount / quarterNominalAmount) * 100;
+                              return (
+                                <div
+                                  key={paymentIdx}
+                                  className="h-full flex items-center justify-center relative"
+                                  style={{
+                                    backgroundColor: color,
+                                    width: `${paymentWidth}%`,
+                                    minWidth: '2px'
+                                  }}
+                                  title={`Payment ${paymentIdx + 1}: $${paymentNominalAmount.toFixed(2)} on ${toISODate(payment.date)}`}
+                                >
+                                  {paymentWidth > 8 && (
+                                    <span className="text-xs font-medium text-white drop-shadow-sm">
+                                      ${paymentNominalAmount.toFixed(2)}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Right half - Summary table */}
-            <div>
-              <div className="text-xs font-medium text-gray-600 mb-2">Quarterly Summary</div>
-              <div className="bg-white rounded border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium">Quarter</th>
-                      <th className="px-3 py-2 text-right font-medium">Sum</th>
-                      <th className="px-3 py-2 text-right font-medium">Count</th>
-                      <th className="px-3 py-2 text-right font-medium">Min</th>
-                      <th className="px-3 py-2 text-right font-medium">Avg</th>
-                      <th className="px-3 py-2 text-right font-medium">Max</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {quarters.map((quarter, i) => {
-                      const payments = quarter.payments;
-                      const nominalAmounts = payments.map(p => p.nominalAmount || p.amount);
-                      const min = nominalAmounts.length > 0 ? Math.min(...nominalAmounts) : null;
-                      const max = nominalAmounts.length > 0 ? Math.max(...nominalAmounts) : null;
-                      const avg = nominalAmounts.length > 0 ? (nominalAmounts.reduce((a, b) => a + b, 0) / nominalAmounts.length) : null;
-                      const quarterNominalAmount = quarter.nominalAmount || quarter.totalAmount;
-
-                      return (
-                        <tr key={i} className="border-t border-gray-100">
-                          <td className="px-3 py-2 font-mono">Dev Q{quarter.developmentQuarter}</td>
-                          <td className="px-3 py-2 text-right font-medium">${quarterNominalAmount.toFixed(2)}</td>
-                          <td className="px-3 py-2 text-right text-gray-600">{quarter.paymentCount}</td>
-                          <td className="px-3 py-2 text-right text-gray-600">{min !== null ? `$${min.toFixed(2)}` : '-'}</td>
-                          <td className="px-3 py-2 text-right text-gray-600">{avg !== null ? `$${avg.toFixed(2)}` : '-'}</td>
-                          <td className="px-3 py-2 text-right text-gray-600">{max !== null ? `$${max.toFixed(2)}` : '-'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                  );
+                })}
               </div>
-            </div>
-          </div>
-          )}
-        </div>
 
-        {/* Inflation Adjustment */}
-        {hasInflationAdjustment && (
-          <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-            <div className="text-sm font-medium mb-3 text-orange-900">Inflation Adjustment</div>
-            <div className="text-sm text-orange-800 mb-3">
-              Payments are adjusted from their original calendar quarter to the observation end date using simulated quarterly inflation rates.
-            </div>
-
-            <div className="space-y-4">
-              {/* Inflation rates table */}
-              <div className="text-xs font-medium text-orange-800 mb-2">Quarterly Inflation Rates Used</div>
-              <div className="bg-white rounded border overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-2 py-1 text-left font-medium">Calendar Quarter</th>
-                      <th className="px-2 py-1 text-left font-medium">Target Quarter</th>
-                      <th className="px-2 py-1 text-right font-medium">Inflation Rate</th>
-                      <th className="px-2 py-1 text-right font-medium">Adjustment Factor</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      // Get all unique calendar quarters from payments
-                      const calendarQuarters = [...new Set(quarters.flatMap(q =>
-                        q.payments.map(p => {
-                          const quarterInfo = getQuarterInfo(p.date, claimInfo.accidentDate);
-                          return quarterInfo.quarterKey;
-                        })
-                      ))].sort();
-
-                      const observationQuarter = getQuarterInfo(endDate, claimInfo.accidentDate);
-
-                      return calendarQuarters.map((calendarQuarter, i) => {
-                        const targetQuarter = observationQuarter.quarterKey;
-                        const inflationRate = getQuarterlyInflationRate(calendarQuarter);
-                        const adjustmentFactor = calculateAdjustmentFactor(calendarQuarter, targetQuarter);
-                        const inflationRatePercent = (inflationRate * 100).toFixed(2);
-                        const sign = inflationRate >= 0 ? '+' : '';
+              {/* Right half - Summary table */}
+              <div>
+                <div className="text-xs font-medium text-gray-600 mb-2">Quarterly Summary</div>
+                <div className="bg-white rounded border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Quarter</th>
+                        <th className="px-3 py-2 text-right font-medium">Sum</th>
+                        <th className="px-3 py-2 text-right font-medium">Count</th>
+                        <th className="px-3 py-2 text-right font-medium">Min</th>
+                        <th className="px-3 py-2 text-right font-medium">Avg</th>
+                        <th className="px-3 py-2 text-right font-medium">Max</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {quarters.map((quarter, i) => {
+                        const payments = quarter.payments;
+                        const nominalAmounts = payments.map(p => p.nominalAmount || p.amount);
+                        const min = nominalAmounts.length > 0 ? Math.min(...nominalAmounts) : null;
+                        const max = nominalAmounts.length > 0 ? Math.max(...nominalAmounts) : null;
+                        const avg = nominalAmounts.length > 0 ? (nominalAmounts.reduce((a, b) => a + b, 0) / nominalAmounts.length) : null;
+                        const quarterNominalAmount = quarter.nominalAmount || quarter.totalAmount;
 
                         return (
                           <tr key={i} className="border-t border-gray-100">
-                            <td className="px-2 py-1 font-mono text-xs">{calendarQuarter}</td>
-                            <td className="px-2 py-1 font-mono text-xs">{targetQuarter}</td>
-                            <td className="px-2 py-1 text-right text-xs">{sign}{inflationRatePercent}%</td>
-                            <td className="px-2 py-1 text-right text-xs font-mono">{adjustmentFactor.toFixed(4)}</td>
+                            <td className="px-3 py-2 font-mono">Dev Q{quarter.developmentQuarter}</td>
+                            <td className="px-3 py-2 text-right font-medium">${quarterNominalAmount.toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">{quarter.paymentCount}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">{min !== null ? `$${min.toFixed(2)}` : '-'}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">{avg !== null ? `$${avg.toFixed(2)}` : '-'}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">{max !== null ? `$${max.toFixed(2)}` : '-'}</td>
                           </tr>
                         );
-                      });
-                    })()}
-                  </tbody>
-                </table>
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {hasInflationAdjustment && (
+          <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+            <div className="text-sm font-medium mb-3 text-orange-900">Price Index Adjustment</div>
+            <div className="text-sm text-orange-800 mb-3">
+              We use a made-up quarterly <strong>Price Index</strong> over the whole history.
+              The adjustment factor is computed as: <span className="font-mono bg-orange-100 px-1 rounded">AdjFactor(q) = PI[most_recent] / PI[q]</span>.
+            </div>
+
+            {/* Price Index mini chart */}
+            <div className="bg-white rounded border p-3 mb-4">
+              <div className="text-xs font-medium text-gray-700 mb-2">Price Index (Quarterly)</div>
+              {(() => {
+                if (!priceIndexSeries || priceIndexSeries.length === 0) return <div className="text-xs text-gray-500">No index data.</div>;
+                const w = 720, h = 160, pad = 32;
+                const xs = priceIndexSeries.map(p => p.index);
+                const minY = Math.min(...xs) * 0.98;
+                const maxY = Math.max(...xs) * 1.02;
+                const n = priceIndexSeries.length;
+                const xScale = (i) => pad + (i / (n - 1)) * (w - 2 * pad);
+                const yScale = (v) => h - pad - ((v - minY) / (maxY - minY)) * (h - 2 * pad);
+                const path = priceIndexSeries.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i)} ${yScale(p.index)}`).join(' ');
+                const last = priceIndexSeries[priceIndexSeries.length - 1];
+                return (
+                  <svg width="100%" viewBox={`0 0 ${w} ${h}`}>
+                    <rect x="0" y="0" width={w} height={h} fill="#ffffff" />
+                    <path d={path} fill="none" stroke="#f59e0b" strokeWidth="2" />
+                    {/* axes */}
+                    <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} stroke="#e5e7eb" />
+                    <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="#e5e7eb" />
+                    {/* labels */}
+                    <text x={pad} y={pad - 8} fontSize="10" fill="#6b7280">Index</text>
+                    <text x={w - pad} y={h - 8} fontSize="10" fill="#6b7280" textAnchor="end">{last.quarterKey}</text>
+                    <text x={pad} y={h - 8} fontSize="10" fill="#6b7280">{priceIndexSeries[0].quarterKey}</text>
+                  </svg>
+                )
+              })()}
+              <div className="text-xs text-gray-600 mt-2">
+                <strong>Equation:</strong> <span className="font-mono">AdjFactor(source) = PI[target] / PI[source]</span>, where <span className="font-mono">target</span> is the most recent observable quarter.
               </div>
             </div>
 
-            {/* Payment Adjustments Table */}
-            <div className="text-xs font-medium text-orange-800 mb-2">Payment Adjustments</div>
-            <div className="bg-white rounded border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium">Quarter</th>
-                    <th className="px-3 py-2 text-left font-medium">Calendar Quarter</th>
-                    <th className="px-3 py-2 text-right font-medium">Nominal Amount</th>
-                    <th className="px-3 py-2 text-right font-medium">Adjustment Factor</th>
-                    <th className="px-3 py-2 text-right font-medium">Adjusted Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {quarters.map((quarter, i) => {
-                    if (quarter.paymentCount === 0) return null;
-
-                    // For display, we'll show the quarter's total and its adjustment
-                    const firstPayment = quarter.payments[0];
-                    const calendarQuarterInfo = getQuarterInfo(firstPayment.date, claimInfo.accidentDate);
-                    const calendarQuarterKey = calendarQuarterInfo.quarterKey;
-                    const observationQuarter = getQuarterInfo(endDate, claimInfo.accidentDate);
-                    const adjustmentFactor = calculateAdjustmentFactor(calendarQuarterKey, observationQuarter.quarterKey);
-
-                    // Calculate what the correctly adjusted amount should be
-                    const correctlyAdjustedAmount = quarter.payments.reduce((sum, p) => {
-                      const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
-                      const paymentAdjustmentFactor = calculateAdjustmentFactor(paymentCalendarQuarter, observationQuarter.quarterKey);
-                      return sum + (p.nominalAmount || p.amount) * paymentAdjustmentFactor;
-                    }, 0);
-
-                    return (
-                      <tr key={i} className="border-t border-gray-100">
-                        <td className="px-3 py-2 font-mono">Dev Q{quarter.developmentQuarter}</td>
-                        <td className="px-3 py-2 font-mono">{calendarQuarterKey}</td>
-                        <td className="px-3 py-2 text-right font-medium">{formatCurrency(quarter.nominalAmount)}</td>
-                        <td className="px-3 py-2 text-right text-gray-600 font-mono">{adjustmentFactor.toFixed(4)}</td>
-                        <td className="px-3 py-2 text-right font-medium text-orange-700">{formatCurrency(correctlyAdjustedAmount)}</td>
+            <div className="grid md:grid-cols-2 gap-4">
+              {/* Index values & factors for used quarters */}
+              <div>
+                <div className="text-xs font-medium text-orange-800 mb-2">Index Values & Adjustment Factors (for quarters with payments)</div>
+                <div className="bg-white rounded border overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-2 py-1 text-left font-medium">Source Quarter</th>
+                        <th className="px-2 py-1 text-right font-medium">PI[source]</th>
+                        <th className="px-2 py-1 text-left font-medium">Target Quarter</th>
+                        <th className="px-2 py-1 text-right font-medium">PI[target]</th>
+                        <th className="px-2 py-1 text-right font-medium">Adj Factor</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const uniqueSourceQs = [...new Set(
+                          quarters.flatMap(q => q.payments.map(p => getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey))
+                        )].sort();
+                        const targetQuarterKey = getQuarterInfo(endDate, claimInfo.accidentDate).quarterKey;
+                        const targetPI = priceIndexMap ? priceIndexMap[targetQuarterKey] : null;
+                        return uniqueSourceQs.map((qk, i) => {
+                          const srcPI = priceIndexMap ? priceIndexMap[qk] : null;
+                          const factor = (srcPI && targetPI) ? (targetPI / srcPI) : 1.0;
+                          return (
+                            <tr key={i} className="border-t border-gray-100">
+                              <td className="px-2 py-1 font-mono">{qk}</td>
+                              <td className="px-2 py-1 text-right font-mono">{srcPI ? srcPI.toFixed(2) : '-'}</td>
+                              <td className="px-2 py-1 font-mono">{targetQuarterKey}</td>
+                              <td className="px-2 py-1 text-right font-mono">{targetPI ? targetPI.toFixed(2) : '-'}</td>
+                              <td className="px-2 py-1 text-right font-mono">{factor.toFixed(4)}</td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Payment Adjustments Table */}
+              <div>
+                <div className="text-xs font-medium text-orange-800 mb-2">Payment Adjustments</div>
+                <div className="bg-white rounded border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Quarter</th>
+                        <th className="px-3 py-2 text-left font-medium">Calendar Quarter</th>
+                        <th className="px-3 py-2 text-right font-medium">Nominal Amount</th>
+                        <th className="px-3 py-2 text-right font-medium">Adj Factor</th>
+                        <th className="px-3 py-2 text-right font-medium">Adjusted Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {quarters.map((quarter, i) => {
+                        if (quarter.paymentCount === 0) return null;
+
+                        const firstPayment = quarter.payments[0];
+                        const calendarQuarterInfo = getQuarterInfo(firstPayment.date, claimInfo.accidentDate);
+                        const calendarQuarterKey = calendarQuarterInfo.quarterKey;
+                        const targetQuarterKey = getQuarterInfo(endDate, claimInfo.accidentDate).quarterKey;
+                        const targetPI = priceIndexMap ? priceIndexMap[targetQuarterKey] : null;
+                        const srcPI = priceIndexMap ? priceIndexMap[calendarQuarterKey] : null;
+                        const displayFactor = (srcPI && targetPI) ? (targetPI / srcPI) : 1.0;
+
+                        const correctlyAdjustedAmount = quarter.payments.reduce((sum, p) => {
+                          const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
+                          const paymentSrcPI = priceIndexMap ? priceIndexMap[paymentCalendarQuarter] : null;
+                          const adj = (paymentSrcPI && targetPI) ? (targetPI / paymentSrcPI) : 1.0;
+                          return sum + (p.nominalAmount || p.amount) * adj;
+                        }, 0);
+
+                        return (
+                          <tr key={i} className="border-t border-gray-100">
+                            <td className="px-3 py-2 font-mono">Dev Q{quarter.developmentQuarter}</td>
+                            <td className="px-3 py-2 font-mono">{calendarQuarterKey}</td>
+                            <td className="px-3 py-2 text-right font-medium">{formatCurrency(quarter.nominalAmount)}</td>
+                            <td className="px-3 py-2 text-right text-gray-600 font-mono">{displayFactor.toFixed(4)}</td>
+                            <td className="px-3 py-2 text-right font-medium text-orange-700">{formatCurrency(correctlyAdjustedAmount)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Cumulative View */}
+        {/* Calculate Outstanding Claim Liability */}
         <div className="bg-green-50 p-4 rounded-lg">
-          <div className="text-sm font-medium mb-3">Cumulative View</div>
-          <div className="bg-white rounded border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-2 text-left font-medium">Quarter</th>
-                  <th className="px-3 py-2 text-right font-medium">Cumulative Paid</th>
-                  <th className="px-3 py-2 text-right font-medium">Cumulative Count</th>
-                  <th className="px-3 py-2 text-right font-medium">Average Payment Size</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  let cumulativeSum = 0;
-                  let cumulativeCount = 0;
-
-                  return quarters.map((quarter, i) => {
-                    // Calculate inflation-adjusted amount for this quarter
-                    const observationQuarter = getQuarterInfo(endDate, claimInfo.accidentDate);
-
-                    const allPayments = quarter.payments.map(p => {
-                      const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
-                      const paymentAdjustmentFactor = calculateAdjustmentFactor(paymentCalendarQuarter, observationQuarter.quarterKey);
-                      return (p.nominalAmount || p.amount) * paymentAdjustmentFactor;
-                    });
-
-                    cumulativeSum += allPayments.reduce((sum, amount) => sum + amount, 0);
-                    cumulativeCount += quarter.paymentCount;
-
-                    // Alternative calculation: directly sum adjusted payments
-                    const directSum = quarters.slice(0, i + 1).reduce((sum, q) => {
-                      return sum + q.payments.reduce((qSum, p) => {
-                        const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
-                        const paymentAdjustmentFactor = calculateAdjustmentFactor(paymentCalendarQuarter, observationQuarter.quarterKey);
-                        return qSum + (p.nominalAmount || p.amount) * paymentAdjustmentFactor;
-                      }, 0);
-                    }, 0);
-
-                    const allPaymentsToDate = quarters.slice(0, i + 1).flatMap(q => q.payments.map(p => {
-                      const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
-                      const paymentAdjustmentFactor = calculateAdjustmentFactor(paymentCalendarQuarter, observationQuarter.quarterKey);
-                      return (p.nominalAmount || p.amount) * paymentAdjustmentFactor;
-                    }));
-
-                    const avgPayment = allPaymentsToDate.length > 0 ? (cumulativeSum / allPaymentsToDate.length) : 0;
-
-                    return (
-                      <tr key={i} className="border-t border-gray-100">
-                        <td className="px-3 py-2 font-mono">Dev Q{quarter.developmentQuarter}</td>
-                        <td className="px-3 py-2 text-right font-medium">{formatCurrency(cumulativeSum)}</td>
-                        <td className="px-3 py-2 text-right font-medium">{cumulativeCount}</td>
-                        <td className="px-3 py-2 text-right font-medium">{avgPayment > 0 ? formatCurrency(avgPayment) : '-'}</td>
-                      </tr>
-                    );
-                  });
-                })()}
-              </tbody>
-            </table>
-          </div>
-          <div className="text-xs text-gray-600 mt-2">
-            <strong>Code variables:</strong> Cumulative Total Paid = <code>total_payment_size</code>, Avg Payment = <code>average_payment_size</code>
-          </div>
-        </div>
-
-        {/* Outstanding Liability View */}
-        <div className="bg-red-50 p-4 rounded-lg">
-          <div className="text-sm font-medium mb-3">Outstanding Claim Liability View</div>
+          <div className="text-sm font-medium mb-3">Calculate Outstanding Claim Liability</div>
           {(() => {
-            // Calculate ultimate claim size (total payments over lifetime)
-            const observationQuarter = getQuarterInfo(endDate, claimInfo.accidentDate);
+            const observationQuarterKey = getQuarterInfo(endDate, claimInfo.accidentDate).quarterKey;
+            const targetPI = priceIndexMap ? priceIndexMap[observationQuarterKey] : null;
+
+            // Ultimate = total inflation-adjusted payments over the claim lifetime
             const ultimateClaimSize = quarters.reduce((sum, q) => {
               return sum + q.payments.reduce((qSum, p) => {
-                const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
-                const paymentAdjustmentFactor = calculateAdjustmentFactor(paymentCalendarQuarter, observationQuarter.quarterKey);
-                return qSum + (p.nominalAmount || p.amount) * paymentAdjustmentFactor;
+                const paymentQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
+                const srcPI = priceIndexMap ? priceIndexMap[paymentQuarter] : null;
+                const adj = (srcPI && targetPI) ? (targetPI / srcPI) : 1.0;
+                return qSum + (p.nominalAmount || p.amount) * adj;
               }, 0);
             }, 0);
 
             return (
               <>
                 <div className="text-sm mb-3">
-                  <strong>Ultimate = Total Payments Over Claim Lifetime = {formatCurrency(ultimateClaimSize)}</strong>
+                  <strong>Ultimate = Total Payments Over Claim Lifetime (adjusted to {observationQuarterKey}) = {formatCurrency(ultimateClaimSize)}</strong>
                 </div>
                 <div className="bg-white rounded border overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-3 py-2 text-left font-medium">Quarter</th>
-                        <th className="px-3 py-2 text-right font-medium">Total Paid</th>
+                        <th className="px-3 py-2 text-right font-medium">Cumulative Paid</th>
                         <th className="px-3 py-2 text-right font-medium">Outstanding Liability</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(() => {
                         let cumulativeSum = 0;
-
                         return quarters.map((quarter, i) => {
-                          // Calculate inflation-adjusted amount for this quarter
-                          const calendarQuarterKey = `${quarter.year || quarter.calendarYear}Q${quarter.quarter || quarter.calendarQuarter}`;
-                          const adjustedAmount = quarter.payments.reduce((sum, p) => {
-                            const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
-                            const paymentAdjustmentFactor = calculateAdjustmentFactor(paymentCalendarQuarter, observationQuarter.quarterKey);
-                            return sum + (p.nominalAmount || p.amount) * paymentAdjustmentFactor;
+                          const adjustedThisQuarter = quarter.payments.reduce((sum, p) => {
+                            const paymentQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
+                            const srcPI = priceIndexMap ? priceIndexMap[paymentQuarter] : null;
+                            const adj = (srcPI && targetPI) ? (targetPI / srcPI) : 1.0;
+                            return sum + (p.nominalAmount || p.amount) * adj;
                           }, 0);
-
-                          cumulativeSum += adjustedAmount;
+                          cumulativeSum += adjustedThisQuarter;
                           const outstandingLiability = Math.max(0, ultimateClaimSize - cumulativeSum);
-
                           return (
                             <tr key={i} className="border-t border-gray-100">
                               <td className="px-3 py-2 font-mono">Dev Q{quarter.developmentQuarter}</td>
@@ -616,13 +580,14 @@ function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBase
                     </tbody>
                   </table>
                 </div>
+                <div className="text-xs text-gray-600 mt-2">
+                  <strong>Formula:</strong> OCL = <span className="font-mono">Ultimate</span> − <span className="font-mono">CumulativePaidToDate</span>.
+                </div>
               </>
             );
           })()}
-          <div className="text-xs text-gray-600 mt-2">
-            <strong>Target variable:</strong> Outstanding Liability = <code>ultimate_claim_size - cumulative_payments_to_date</code>
-          </div>
         </div>
+
 
         {/* Development Period Calculation */}
         <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
@@ -655,7 +620,7 @@ function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBase
                   </div>
                   <svg width="100%" height={svgHeight} className="border rounded bg-white">
                     {/* Original claim representation at top */}
-                    <rect x="20" y="10" width="560" height="15" fill="#E5E7EB" stroke="#9CA3AF" strokeWidth="1" rx="2"/>
+                    <rect x="20" y="10" width="560" height="15" fill="#E5E7EB" stroke="#9CA3AF" strokeWidth="1" rx="2" />
                     <text x="25" y="21" fontSize="10" fill="#374151" fontWeight="bold">
                       Original Claim {claimInfo.claimId}
                     </text>
@@ -690,16 +655,50 @@ function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBase
                           />
 
                           {/* Visible (uncensored) part */}
-                          <rect
-                            x="20"
-                            y={y}
-                            width={cutoffWidth}
-                            height={rowHeight}
-                            fill="#DBEAFE"
-                            stroke="#3B82F6"
-                            strokeWidth="1"
-                            rx="2"
-                          />
+                          {(() => {
+                            // Compute outstanding liability for this row to decide color
+                            const observationQuarter = getQuarterInfo(endDate, claimInfo.accidentDate);
+                            const targetQuarterKey = observationQuarter.quarterKey;
+                            const targetPI = priceIndexMap ? priceIndexMap[targetQuarterKey] : null;
+
+                            const ultimateClaimSize = quarters.reduce((sum, q) => {
+                              return sum + q.payments.reduce((qSum, p) => {
+                                const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
+                                const srcPI = priceIndexMap ? priceIndexMap[paymentCalendarQuarter] : null;
+                                const adj = (srcPI && targetPI) ? (targetPI / srcPI) : 1.0;
+                                return qSum + (p.nominalAmount || p.amount) * adj;
+                              }, 0);
+                            }, 0);
+
+                            let cumulativeToDate = 0;
+                            for (let qIdx = 0; qIdx < quarters.length; qIdx++) {
+                              const q = quarters[qIdx];
+                              if (q.developmentQuarter <= currentQuarter) {
+                                cumulativeToDate += q.payments.reduce((sum, p) => {
+                                  const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
+                                  const srcPI = priceIndexMap ? priceIndexMap[paymentCalendarQuarter] : null;
+                                  const adj = (srcPI && targetPI) ? (targetPI / srcPI) : 1.0;
+                                  return sum + (p.nominalAmount || p.amount) * adj;
+                                }, 0);
+                              }
+                            }
+                            const outstandingLiability = Math.max(0, ultimateClaimSize - cumulativeToDate);
+                            const isZeroTarget = Math.round(outstandingLiability * 100) === 0;
+                            const fillColor = isZeroTarget ? '#FEE2E2' : '#DBEAFE'; // red-100 if zero, otherwise blue-100
+
+                            return (
+                              <rect
+                                x="20"
+                                y={y}
+                                width={cutoffWidth}
+                                height={rowHeight}
+                                fill={fillColor}
+                                stroke="#3B82F6"
+                                strokeWidth="1"
+                                rx="2"
+                              />
+                            );
+                          })()}
 
                           {/* Row label */}
                           <text x="25" y={y + 11} fontSize="9" fill="#374151" fontWeight="medium">
@@ -714,7 +713,7 @@ function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBase
                               const ultimateClaimSize = quarters.reduce((sum, q) => {
                                 return sum + q.payments.reduce((qSum, p) => {
                                   const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
-                                  const paymentAdjustmentFactor = calculateAdjustmentFactor(paymentCalendarQuarter, observationQuarter.quarterKey);
+                                  const paymentAdjustmentFactor = (priceIndexMap && priceIndexMap[observationQuarter.quarterKey] && priceIndexMap[paymentCalendarQuarter] ? (priceIndexMap[observationQuarter.quarterKey] / priceIndexMap[paymentCalendarQuarter]) : 1.0);
                                   return qSum + (p.nominalAmount || p.amount) * paymentAdjustmentFactor;
                                 }, 0);
                               }, 0);
@@ -725,7 +724,7 @@ function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBase
                                 if (q.developmentQuarter <= currentQuarter) {
                                   cumulativeToDate += q.payments.reduce((sum, p) => {
                                     const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
-                                    const paymentAdjustmentFactor = calculateAdjustmentFactor(paymentCalendarQuarter, observationQuarter.quarterKey);
+                                    const paymentAdjustmentFactor = (priceIndexMap && priceIndexMap[observationQuarter.quarterKey] && priceIndexMap[paymentCalendarQuarter] ? (priceIndexMap[observationQuarter.quarterKey] / priceIndexMap[paymentCalendarQuarter]) : 1.0);
                                     return sum + (p.nominalAmount || p.amount) * paymentAdjustmentFactor;
                                   }, 0);
                                 }
@@ -774,7 +773,7 @@ function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBase
                           const ultimateClaimSize = quarters.reduce((sum, q) => {
                             return sum + q.payments.reduce((qSum, p) => {
                               const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
-                              const paymentAdjustmentFactor = calculateAdjustmentFactor(paymentCalendarQuarter, observationQuarter.quarterKey);
+                              const paymentAdjustmentFactor = (priceIndexMap && priceIndexMap[observationQuarter.quarterKey] && priceIndexMap[paymentCalendarQuarter] ? (priceIndexMap[observationQuarter.quarterKey] / priceIndexMap[paymentCalendarQuarter]) : 1.0);
                               return qSum + (p.nominalAmount || p.amount) * paymentAdjustmentFactor;
                             }, 0);
                           }, 0);
@@ -785,7 +784,7 @@ function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBase
                             if (q.developmentQuarter <= currentQuarter) {
                               cumulativeToDate += q.payments.reduce((sum, p) => {
                                 const paymentCalendarQuarter = getQuarterInfo(p.date, claimInfo.accidentDate).quarterKey;
-                                const paymentAdjustmentFactor = calculateAdjustmentFactor(paymentCalendarQuarter, observationQuarter.quarterKey);
+                                const paymentAdjustmentFactor = (priceIndexMap && priceIndexMap[observationQuarter.quarterKey] && priceIndexMap[paymentCalendarQuarter] ? (priceIndexMap[observationQuarter.quarterKey] / priceIndexMap[paymentCalendarQuarter]) : 1.0);
                                 return sum + (p.nominalAmount || p.amount) * paymentAdjustmentFactor;
                               }, 0);
                             }
@@ -818,6 +817,7 @@ function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBase
                 <div className="text-xs text-gray-600">
                   <strong>Key insight:</strong> Each training row represents the claim's state at a specific development quarter,
                   with features based on information available up to that point and the target being the remaining outstanding liability.
+                  <div className="mt-1"><strong>Discard rule:</strong> Rows where the target is <span className="font-mono">$0.00</span> are highlighted and will be <em>discarded</em> before model training.</div>
                 </div>
               </div>
             );
@@ -825,12 +825,12 @@ function QuarterlyPreprocessingView({ claimData, oneBasedDevQuarters, setOneBase
         </div>
       </div>
     );
-    } catch (error) {
-      console.error('Error in QuarterlyPreprocessingView:', error);
-      return (
-        <div className="text-center py-8 text-red-500">
-          Error rendering quarterly preprocessing view. Please try selecting a different claim.
-        </div>
-      );
-    }
+  } catch (error) {
+    console.error('Error in QuarterlyPreprocessingView:', error);
+    return (
+      <div className="text-center py-8 text-red-500">
+        Error rendering quarterly preprocessing view. Please try selecting a different claim.
+      </div>
+    );
   }
+}
