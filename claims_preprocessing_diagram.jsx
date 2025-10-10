@@ -162,6 +162,52 @@ function calculateAdjustmentFactorByIndex(sourceQuarterKey, targetQuarterKey, pr
   return t / s;
 }
 
+// ---- Quarter key helpers ----
+function parseQuarterKey(qk) {
+  const m = qk && qk.match(/(\d{4})Q(\d)/);
+  if (!m) return null;
+  return { year: parseInt(m[1], 10), quarter: parseInt(m[2], 10) };
+}
+function formatQuarterKey(obj) {
+  return `${obj.year}Q${obj.quarter}`;
+}
+function prevQuarterKey(qk) {
+  const q = parseQuarterKey(qk);
+  if (!q) return null;
+  let y = q.year, qu = q.quarter - 1;
+  if (qu < 1) { qu = 4; y -= 1; }
+  return `${y}Q${qu}`;
+}
+function nextQuarterKey(qk) {
+  const q = parseQuarterKey(qk);
+  if (!q) return null;
+  let y = q.year, qu = q.quarter + 1;
+  if (qu > 4) { qu = 1; y += 1; }
+  return `${y}Q${qu}`;
+}
+
+/**
+ * Construct a mid-quarter index map using geometric means of end-of-quarter indices:
+ *   PI_mid[q] = sqrt( PI_eoq[q-1] * PI_eoq[q] )
+ * For the first available quarter, fall back to PI_eoq[q].
+ */
+function buildMidQuarterIndexMap(priceIndexMap) {
+  if (!priceIndexMap) return null;
+  const midMap = {};
+  const keys = Object.keys(priceIndexMap).sort(); // lexical sort works for YYYYQn
+  for (const k of keys) {
+    const prev = prevQuarterKey(k);
+    const eoq = priceIndexMap[k];
+    const prevVal = priceIndexMap[prev];
+    if (prevVal && eoq) {
+      midMap[k] = Math.sqrt(prevVal * eoq);
+    } else {
+      midMap[k] = eoq; // fallback for first quarter in range
+    }
+  }
+  return midMap;
+}
+
 const toISODate = (d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString().slice(0, 10);
 function clampDate(d, min, max) {
   const t = d.getTime();
@@ -342,25 +388,36 @@ function aggregateClaimToQuarters(claim, oneBasedDevQuarters = false, observatio
     if (existingQuarter) {
       // Apply inflation adjustment to quarterly aggregated amounts if observationEndDate is provided
       if (observationEndDate) {
-        // Adjust each payment using the Price Index and sum
-        const adjustedPayments = existingQuarter.payments.map(payment => {
-          const adjustedPaymentAmount = adjustUsingPriceIndex(payment.amount, payment.date, observationEndDate, priceIndexMap);
-          const safeAdjustedPaymentAmount = isNaN(adjustedPaymentAmount) ? payment.amount : adjustedPaymentAmount;
-          return {
-            ...payment,
-            nominalAmount: payment.amount,
-            amount: safeAdjustedPaymentAmount,
-            inflationAdjusted: true
-          };
-        });
-        const adjustedTotal = adjustedPayments.reduce((s, p) => s + p.amount, 0);
+        // Use mid-quarter price index for the source quarter:
+        // PI_mid[q] = sqrt(PI_eoq[q-1] * PI_eoq[q])
+        const observationQuarterKey = getQuarterInfo(observationEndDate, claim.accident).quarterKey;
+        const targetPI = priceIndexMap ? priceIndexMap[observationQuarterKey] : null;
+        const midMap = priceIndexMap ? buildMidQuarterIndexMap(priceIndexMap) : null;
+        const sourceMidPI = midMap ? midMap[existingQuarter.quarterKey] : null;
 
+        const nominalAmount = existingQuarter.totalAmount;
+        const factor = (targetPI && sourceMidPI) ? (targetPI / sourceMidPI) : 1.0;
+        const safeAdjustedAmount = isNaN(factor) ? nominalAmount : nominalAmount * factor;
+
+        // Create adjusted quarter data. Keep payments nominal (for composition display).
         const adjustedQuarter = {
           ...existingQuarter,
-          nominalAmount: existingQuarter.totalAmount,
-          totalAmount: isNaN(adjustedTotal) ? existingQuarter.totalAmount : adjustedTotal,
+          nominalAmount: nominalAmount,
+          totalAmount: safeAdjustedAmount,
           inflationAdjusted: true,
-          payments: adjustedPayments
+          priceIndex: {
+            targetQuarterKey: observationQuarterKey,
+            targetPI,
+            sourceQuarterKey: existingQuarter.quarterKey,
+            sourceMidPI,
+            factor
+          },
+          payments: existingQuarter.payments.map(payment => ({
+            ...payment,
+            nominalAmount: payment.amount,
+            amount: payment.amount, // keep nominal for bar composition clarity
+            inflationAdjusted: false
+          }))
         };
         quarters.push(adjustedQuarter);
       } else {
@@ -618,6 +675,11 @@ function ClaimsDiagram() {
     return generatePriceIndexSeries(startDate, endDate, seed);
   }, [startDate, endDate, seed]);
 
+  // Build mid-quarter price index map
+  const midQuarterIndexMap = useMemo(() => {
+    return priceIndexMap ? buildMidQuarterIndexMap(priceIndexMap) : null;
+  }, [priceIndexMap]);
+
   const claims = autoClaims;
 
   // ---- One-time initialization of cutoffs based on simulated data ----
@@ -712,8 +774,7 @@ function ClaimsDiagram() {
 
         {/* Quarterly Preprocessing Section */}
         <div className='w-full max-w-6xl mx-auto p-4'>
-          <QuarterlyPreprocessingView
-            claimData={quarterlyData}
+          <QuarterlyPreprocessingView claimData={quarterlyData}
             oneBasedDevQuarters={oneBasedDevQuarters}
             setOneBasedDevQuarters={setOneBasedDevQuarters}
             endDate={endDate}
@@ -724,7 +785,7 @@ function ClaimsDiagram() {
             selectedClaim={selectedClaim}
             priceIndexMap={priceIndexMap}
             priceIndexSeries={priceIndexSeries}
-          />
+            midQuarterIndexMap={midQuarterIndexMap} />
         </div>
       </div>
     </div>
