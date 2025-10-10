@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,12 +17,13 @@
         }
     </style>
 </head>
+
 <body>
     <div id="root"></div>
-    
+
     <!-- Load utilities first -->
     <script src="utils/utilities.js"></script>
-    
+
     <!-- Load component files in dependency order -->
     <script type="text/babel" src="components/PreprocessingStepsOverview.jsx"></script>
     <script type="text/babel" src="components/StaticCovariates.jsx"></script>
@@ -33,10 +35,10 @@
     <script type="text/babel" src="components/DevelopmentPeriodGeneration.jsx"></script>
     <script type="text/babel" src="components/QuarterlyPreprocessingView.jsx"></script>
     <script type="text/babel" src="components/ClaimsPreprocessingDiagram.jsx"></script>
-    
+
     <script type="text/babel">
         const { useState, useMemo, useRef, useEffect } = React;
-        
+
         function App() {
             return (
                 <div className="min-h-screen bg-gray-50">
@@ -44,9 +46,10 @@
                 </div>
             );
         }
-        
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
 </body>
+
 </html>

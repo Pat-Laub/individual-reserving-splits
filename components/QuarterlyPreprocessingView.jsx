@@ -1,19 +1,19 @@
 // QuarterlyPreprocessingView Component
 // Main orchestrator component that uses all sub-components
 
-function QuarterlyPreprocessingView({ 
-  claimData, 
-  oneBasedDevQuarters, 
-  setOneBasedDevQuarters, 
-  endDate, 
-  showPaymentDetails, 
-  setShowPaymentDetails, 
-  showQuarterlyAggregation, 
-  setShowQuarterlyAggregation, 
-  selectedClaim, 
-  priceIndexMap, 
-  priceIndexSeries, 
-  midQuarterIndexMap 
+function QuarterlyPreprocessingView({
+  claimData,
+  oneBasedDevQuarters,
+  setOneBasedDevQuarters,
+  endDate,
+  showPaymentDetails,
+  setShowPaymentDetails,
+  showQuarterlyAggregation,
+  setShowQuarterlyAggregation,
+  selectedClaim,
+  priceIndexMap,
+  priceIndexSeries,
+  midQuarterIndexMap
 }) {
   if (!claimData) {
     return (
@@ -59,7 +59,7 @@ function QuarterlyPreprocessingView({
 
         <ContinuousTimeline claimInfo={claimInfo} selectedClaim={selectedClaim} />
 
-        <PaymentDetails 
+        <PaymentDetails
           claimInfo={claimInfo}
           selectedClaim={selectedClaim}
           oneBasedDevQuarters={oneBasedDevQuarters}
@@ -67,14 +67,14 @@ function QuarterlyPreprocessingView({
           setShowPaymentDetails={setShowPaymentDetails}
         />
 
-        <QuarterlyAggregation 
+        <QuarterlyAggregation
           quarters={quarters}
           showQuarterlyAggregation={showQuarterlyAggregation}
           setShowQuarterlyAggregation={setShowQuarterlyAggregation}
         />
 
         {hasInflationAdjustment && (
-          <InflationAdjustment 
+          <InflationAdjustment
             quarters={quarters}
             claimInfo={claimInfo}
             endDate={endDate}
@@ -84,7 +84,7 @@ function QuarterlyPreprocessingView({
           />
         )}
 
-        <OutstandingLiabilityCalculation 
+        <OutstandingLiabilityCalculation
           quarters={quarters}
           claimInfo={claimInfo}
           endDate={endDate}
@@ -92,7 +92,7 @@ function QuarterlyPreprocessingView({
           midQuarterIndexMap={midQuarterIndexMap}
         />
 
-        <DevelopmentPeriodGeneration 
+        <DevelopmentPeriodGeneration
           claimInfo={claimInfo}
           quarters={quarters}
           endDate={endDate}

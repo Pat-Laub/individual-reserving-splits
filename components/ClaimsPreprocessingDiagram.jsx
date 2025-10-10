@@ -3,7 +3,7 @@
 
 function ClaimsPreprocessingDiagram() {
   const { useState, useMemo, useEffect } = React;
-  
+
   // Destructure utilities from global scope
   const {
     hashStringToSeed,
@@ -143,8 +143,8 @@ function ClaimsPreprocessingDiagram() {
 
   // Selected claim quarterly data
   const selectedClaim = selectedClaimIndex !== null ? claims[selectedClaimIndex] : null;
-  const quarterlyData = selectedClaim 
-    ? aggregateClaimToQuarters(selectedClaim, oneBasedDevQuarters, endDate, priceIndexMap) 
+  const quarterlyData = selectedClaim
+    ? aggregateClaimToQuarters(selectedClaim, oneBasedDevQuarters, endDate, priceIndexMap)
     : null;
 
   return (
@@ -152,7 +152,7 @@ function ClaimsPreprocessingDiagram() {
       <div className='w-full p-4 flex flex-col items-center'>
         <div className='text-xl font-semibold mb-2'>Individual Reserving Data Preprocessing</div>
         <div className='mb-4 text-sm text-gray-600 text-center max-w-2xl'>
-          This page demonstrates the preprocessing steps applied to individual insurance claims 
+          This page demonstrates the preprocessing steps applied to individual insurance claims
           before they are used in machine learning models for reserving.
         </div>
 
@@ -164,19 +164,18 @@ function ClaimsPreprocessingDiagram() {
               .slice(0, Math.min(20, claims.length))
               .map((claim, index) => ({ claim, originalIndex: index }))
               .sort((a, b) => a.claim.staticCovariates.claimId.localeCompare(
-                b.claim.staticCovariates.claimId, 
-                undefined, 
+                b.claim.staticCovariates.claimId,
+                undefined,
                 { numeric: true }
               ))
               .map(({ claim, originalIndex }) => (
                 <button
                   key={originalIndex}
                   onClick={() => setSelectedClaimIndex(originalIndex)}
-                  className={`px-3 py-2 rounded text-xs font-medium transition-colors ${
-                    selectedClaimIndex === originalIndex
+                  className={`px-3 py-2 rounded text-xs font-medium transition-colors ${selectedClaimIndex === originalIndex
                       ? 'bg-blue-600 text-white'
                       : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   {claim.staticCovariates.claimId}
                 </button>
@@ -189,7 +188,7 @@ function ClaimsPreprocessingDiagram() {
 
         {/* Quarterly Preprocessing Section */}
         <div className='w-full max-w-6xl mx-auto p-4'>
-          <QuarterlyPreprocessingView 
+          <QuarterlyPreprocessingView
             claimData={quarterlyData}
             oneBasedDevQuarters={oneBasedDevQuarters}
             setOneBasedDevQuarters={setOneBasedDevQuarters}
@@ -201,7 +200,7 @@ function ClaimsPreprocessingDiagram() {
             selectedClaim={selectedClaim}
             priceIndexMap={priceIndexMap}
             priceIndexSeries={priceIndexSeries}
-            midQuarterIndexMap={midQuarterIndexMap} 
+            midQuarterIndexMap={midQuarterIndexMap}
           />
         </div>
       </div>

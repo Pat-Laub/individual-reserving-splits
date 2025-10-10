@@ -3,7 +3,7 @@
 
 function StaticCovariates({ claimInfo }) {
   const [show, setShow] = React.useState(true);
-  
+
   return (
     <div className="bg-gray-50 p-4 rounded-lg">
       <div className="flex items-center justify-between mb-3">

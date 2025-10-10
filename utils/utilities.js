@@ -534,33 +534,33 @@ window.utils = {
   startOfQuarterUTC,
   addQuartersUTC,
   quarterKeyFromUTC,
-  
+
   // Formatting
   formatCurrency,
-  
+
   // Random
   hashStringToSeed,
   mulberry32,
-  
+
   // Quarter helpers
   parseQuarterKey,
   formatQuarterKey,
   prevQuarterKey,
   nextQuarterKey,
   getQuarterInfo,
-  
+
   // Price index
   generatePriceIndexSeries,
   buildMidQuarterIndexMap,
   adjustUsingPriceIndex,
   calculateAdjustmentFactorByIndex,
-  
+
   // Tick generation
   generateSmartTicks,
-  
+
   // Aggregation
   aggregateClaimToQuarters,
-  
+
   // Claim generation
   generateClaims,
 };
