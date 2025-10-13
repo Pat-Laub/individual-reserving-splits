@@ -1,4 +1,4 @@
-// QuarterlyPreprocessingView Component
+// components/QuarterlyPreprocessingView.jsx
 // Main orchestrator component that uses all sub-components
 
 function QuarterlyPreprocessingView({
@@ -101,6 +101,7 @@ function QuarterlyPreprocessingView({
           midQuarterIndexMap={midQuarterIndexMap}
         />
 
+        {/* NEW: Feature summarisation with Plotly sparks */}
         <CovariateHistorySummaries
           claimData={claimData}
           endDate={endDate}
@@ -110,15 +111,15 @@ function QuarterlyPreprocessingView({
         />
       </div>
     );
-  } catch (error) {
-    console.error('Error in QuarterlyPreprocessingView:', error);
+  } catch (err) {
+    console.error(err);
     return (
       <div className="text-center py-8 text-red-500">
-        Error rendering quarterly preprocessing view. Please try selecting a different claim.
+        Unexpected error rendering view.
       </div>
     );
   }
 }
 
-// Make the component globally available
+// Make globally available
 window.QuarterlyPreprocessingView = QuarterlyPreprocessingView;

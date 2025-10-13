@@ -1,8 +1,6 @@
-// CovariateHistorySummaries.jsx
-// Summarises covariate histories as-of a chosen development quarter:
-//  • Near-static (latest non-missing up to cutoff)
-//  • Time-series (mean, max, sd, sum, last up to cutoff)
-// Also shows compact visualizations making the cutoff explicit.
+// components/CovariateHistorySummaries.jsx
+// Summarises covariate histories as-of a chosen development quarter,
+// and uses PlotlySpark for compact charts.
 
 function CovariateHistorySummaries({
   claimData,
@@ -29,28 +27,20 @@ function CovariateHistorySummaries({
   const devQs = qSorted.map(q => q.developmentQuarter);
   const minDevQ = Math.min(...devQs);
   const maxDevQ = Math.max(...devQs);
-
-  // Map devQ -> quarter object (assume at most one per dev quarter after aggregation)
   const byDev = React.useMemo(
     () => Object.fromEntries(qSorted.map(q => [q.developmentQuarter, q])),
     [qSorted]
   );
 
-  // Initial cutoff: latest observed dev quarter
   const [cutoffDevQ, setCutoffDevQ] = React.useState(maxDevQ);
 
-  // Little helpers
   const dispQ = (dq) => oneBasedDevQuarters ? dq + 1 : dq;
   const toRange = (start, end) =>
     Array.from({ length: end - start + 1 }, (_, i) => start + i);
 
-  // ---- Near-static covariates (example histories) --------------------------
-  // Postcode: known from notification onward (illustrative)
+  // ---- Near-static covariates (illustrative histories) ---------------------
   const notifyDevQ = getQuarterInfo(claimInfo.notifyDate, claimInfo.accidentDate).developmentQuarter;
   const postcodeKnownFrom = Math.max(minDevQ, notifyDevQ);
-
-  // Legal representation: an illustrative "nearly-static" covariate
-  // For demo purposes, make it become known a couple of dev quarters after notification.
   const legalRepKnownFrom = Math.min(maxDevQ, postcodeKnownFrom + 2);
 
   const devRange = toRange(minDevQ, maxDevQ);
@@ -69,7 +59,7 @@ function CovariateHistorySummaries({
   const postcodeLatest = latestNonMissing(postcodeHistory, cutoffIndex);
   const legalRepLatest = latestNonMissing(legalRepHistory, cutoffIndex);
 
-  // ---- Time-series covariates ---------------------------------------------
+  // ---- Time-series covariates ----------------------------------------------
   // Incremental paid per dev quarter (nominal)
   const increments = devRange.map(dq => {
     const q = byDev[dq];
@@ -88,9 +78,8 @@ function CovariateHistorySummaries({
     return out;
   })();
 
-  // Estimated remaining (inflation-adjusted to observation quarter), per dev quarter
+  // Estimated remaining (inflation-adjusted to observation quarter)
   const adjustedIncrements = (() => {
-    // Build adjustment factors using mid-quarter index if present, otherwise EoQ
     const obsQ = getQuarterInfo(endDate, claimInfo.accidentDate);
     const targetPI = priceIndexMap ? priceIndexMap[obsQ.quarterKey] : null;
     const midMap = midQuarterIndexMap || {};
@@ -139,83 +128,18 @@ function CovariateHistorySummaries({
     return { n, sum, mean, max: isFinite(max) ? max : 0, sd, last };
   };
 
-  const incStats = statsUpTo(adjustedIncrements, cutoffIndex);
-  const cumStats = statsUpTo(cumulativeAdj, cutoffIndex);  // we will use 'last' for cum
-  const remStats = statsUpTo(remainingAdj, cutoffIndex); // we will use 'last' for remaining
+  // Keep increments & cumulative nominal; remaining is adjusted
+  const incStats = statsUpTo(increments, cutoffIndex);
+  const cumStats = statsUpTo(cumulative, cutoffIndex);
+  const remStats = statsUpTo(remainingAdj, cutoffIndex);
 
-  // For labels/tooltips
+  // Labels
+  const devLabels = devRange.map(dq => byDev[dq]?.quarterKey || `Q${dispQ(dq)}`);
   const cutoffQuarterKey = byDev[cutoffDevQ]?.quarterKey;
   const earliestQuarterKey = byDev[minDevQ]?.quarterKey;
   const latestQuarterKey = byDev[maxDevQ]?.quarterKey;
 
-  // ---- Small visualization helpers ----------------------------------------
-  const BarSpark = ({ values, cutoffIdx, height = 36 }) => {
-    const n = values.length || 1;
-    const maxV = Math.max(...values, 1);
-    const w = 2 + n * 10; // 10px per bar + margins
-    const pad = 4;
-    const barW = Math.max(6, (w - 2 * pad) / n - 2);
-    const x = (i) => pad + i * (barW + 2);
-    const y = (v) => (height - pad) - (v / maxV) * (height - 2 * pad);
-    return (
-      <svg width="100%" viewBox={`0 0 ${w} ${height}`} className="bg-white rounded border">
-        <rect x="0" y="0" width={w} height={height} fill="#ffffff" />
-        {values.map((v, i) => (
-          <g key={i} title={`Dev Q${dispQ(devRange[i])}: ${formatCurrency ? formatCurrency(v) : v.toFixed(2)}`}>
-            <rect
-              x={x(i)}
-              y={y(v)}
-              width={barW}
-              height={Math.max(0, height - pad - y(v))}
-              rx="2"
-              fill={i <= cutoffIdx ? "#93c5fd" : "#e5e7eb"}
-              stroke={i <= cutoffIdx ? "#3b82f6" : "#9ca3af"}
-              strokeWidth="0.5"
-            />
-          </g>
-        ))}
-        {/* Cutoff marker */}
-        <line
-          x1={x(cutoffIdx) + barW + 1}
-          y1={pad}
-          x2={x(cutoffIdx) + barW + 1}
-          y2={height - pad}
-          stroke="#dc2626"
-          strokeWidth="1"
-        />
-      </svg>
-    );
-  };
-
-  const LineSpark = ({ values, cutoffIdx, height = 36 }) => {
-    const n = values.length || 1;
-    const w = 2 + n * 10;
-    const pad = 4;
-    const maxV = Math.max(...values, 1);
-    const minV = Math.min(...values, 0);
-    const x = (i) => pad + i * ((w - 2 * pad) / Math.max(1, n - 1));
-    const y = (v) => (height - pad) - ((v - minV) / Math.max(1e-9, (maxV - minV))) * (height - 2 * pad);
-    const pathFull = values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(v)}`).join(' ');
-    const pathObs = values.slice(0, cutoffIdx + 1).map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(v)}`).join(' ');
-    return (
-      <svg width="100%" viewBox={`0 0 ${w} ${height}`} className="bg-white rounded border">
-        <rect x="0" y="0" width={w} height={height} fill="#ffffff" />
-        {/* full series in light gray */}
-        <path d={pathFull} fill="none" stroke="#e5e7eb" strokeWidth="1" />
-        {/* observed-to-cutoff in blue */}
-        <path d={pathObs} fill="none" stroke="#3b82f6" strokeWidth="1" />
-        {/* Cutoff marker */}
-        <line
-          x1={x(cutoffIdx)}
-          y1={pad}
-          x2={x(cutoffIdx)}
-          y2={height - pad}
-          stroke="#dc2626"
-          strokeWidth="1"
-        />
-      </svg>
-    );
-  };
+  const Spark = window.PlotlySpark;
 
   return (
     <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
@@ -315,12 +239,12 @@ function CovariateHistorySummaries({
               <div className="text-xs font-medium text-gray-700 mb-2">Time‑Series Covariates (summary up to cutoff)</div>
 
               <div className="space-y-3">
-                {/* Incremental payments */}
+                {/* Incremental payments (bar) */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs text-gray-600">Incremental payments (inflation-adjusted)</div>
+                    <div className="text-xs text-gray-600">Incremental payments (nominal)</div>
                   </div>
-                  <BarSpark values={adjustedIncrements} cutoffIdx={cutoffIndex} />
+                  <Spark kind="bar" values={increments} labels={devLabels} cutoffIndex={cutoffIndex} height={110} currency />
                   <div className="grid grid-cols-4 gap-2 mt-2 text-xs">
                     <div className="bg-gray-50 border rounded p-2">
                       <div className="text-gray-600">Mean</div>
@@ -341,12 +265,12 @@ function CovariateHistorySummaries({
                   </div>
                 </div>
 
-                {/* Cumulative paid */}
+                {/* Cumulative paid (line) */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs text-gray-600">Cumulative paid to date (inflation-adjusted)</div>
+                    <div className="text-xs text-gray-600">Cumulative paid to date (nominal)</div>
                   </div>
-                  <LineSpark values={cumulativeAdj} cutoffIdx={cutoffIndex} />
+                  <Spark kind="line" values={cumulative} labels={devLabels} cutoffIndex={cutoffIndex} height={110} currency />
                   <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
                     <div className="bg-gray-50 border rounded p-2">
                       <div className="text-gray-600">Last (as‑of cutoff)</div>
@@ -355,9 +279,9 @@ function CovariateHistorySummaries({
                     <div className="bg-gray-50 border rounded p-2">
                       <div className="text-gray-600">Min/Max (to cutoff)</div>
                       <div className="font-medium">
-                        {formatCurrency ? formatCurrency(Math.min(...cumulativeAdj.slice(0, cutoffIndex + 1))) : Math.min(...cumulativeAdj.slice(0, cutoffIndex + 1)).toFixed(2)}
+                        {formatCurrency ? formatCurrency(Math.min(...cumulative.slice(0, cutoffIndex + 1))) : Math.min(...cumulative.slice(0, cutoffIndex + 1)).toFixed(2)}
                         {' '}–{' '}
-                        {formatCurrency ? formatCurrency(Math.max(...cumulativeAdj.slice(0, cutoffIndex + 1))) : Math.max(...cumulativeAdj.slice(0, cutoffIndex + 1)).toFixed(2)}
+                        {formatCurrency ? formatCurrency(Math.max(...cumulative.slice(0, cutoffIndex + 1))) : Math.max(...cumulative.slice(0, cutoffIndex + 1)).toFixed(2)}
                       </div>
                     </div>
                     <div className="bg-gray-50 border rounded p-2">
@@ -367,14 +291,14 @@ function CovariateHistorySummaries({
                   </div>
                 </div>
 
-                {/* Estimated remaining (adjusted) */}
+                {/* Estimated remaining (adjusted line) */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <div className="text-xs text-gray-600">
                       Estimated remaining (inflation‑adjusted to {getQuarterInfo(endDate, claimInfo.accidentDate).quarterKey})
                     </div>
                   </div>
-                  <LineSpark values={remainingAdj} cutoffIdx={cutoffIndex} />
+                  <Spark kind="line" values={remainingAdj} labels={devLabels} cutoffIndex={cutoffIndex} height={110} currency />
                   <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
                     <div className="bg-gray-50 border rounded p-2">
                       <div className="text-gray-600">Last (as‑of cutoff)</div>
@@ -384,7 +308,9 @@ function CovariateHistorySummaries({
                     </div>
                     <div className="bg-gray-50 border rounded p-2">
                       <div className="text-gray-600">Ultimate (adj)</div>
-                      <div className="font-medium">{formatCurrency ? formatCurrency(ultimateAdj) : ultimateAdj.toFixed(2)}</div>
+                      <div className="font-medium">
+                        {formatCurrency ? formatCurrency(ultimateAdj) : ultimateAdj.toFixed(2)}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -451,18 +377,12 @@ function CovariateHistorySummaries({
                 </tbody>
               </table>
             </div>
-            <div className="text-xs text-gray-600 mt-2">
-              <strong>Note:</strong> Incremental and cumulative values above are nominal; the estimated remaining uses
-              inflation‑adjusted amounts consistent with your earlier steps.
+            <div className="text-[11px] text-gray-600 mt-2">
+              Blue = used up to cutoff; gray = future (excluded). Red vertical line marks the cutoff dev quarter.
             </div>
-          </div>
-
-          {/* Tiny legend */}
-          <div className="text-[11px] text-gray-600 mt-3">
-            Blue = used up to cutoff; gray = future (excluded). Red vertical line marks the cutoff dev quarter.
-          </div>
-          <div className="text-[11px] text-gray-600">
-            Earliest quarter: <span className="font-mono">{earliestQuarterKey}</span> • Latest quarter: <span className="font-mono">{latestQuarterKey}</span>
+            <div className="text-[11px] text-gray-600">
+              Earliest: <span className="font-mono">{earliestQuarterKey}</span> • Latest: <span className="font-mono">{latestQuarterKey}</span>
+            </div>
           </div>
         </>
       )}
@@ -470,5 +390,4 @@ function CovariateHistorySummaries({
   );
 }
 
-// Make globally available (consistent with other components)
 window.CovariateHistorySummaries = CovariateHistorySummaries;
