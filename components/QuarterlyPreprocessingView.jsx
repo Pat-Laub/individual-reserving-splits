@@ -100,6 +100,14 @@ function QuarterlyPreprocessingView({
           priceIndexMap={priceIndexMap}
           midQuarterIndexMap={midQuarterIndexMap}
         />
+
+        <CovariateHistorySummaries
+          claimData={claimData}
+          endDate={endDate}
+          priceIndexMap={priceIndexMap}
+          midQuarterIndexMap={midQuarterIndexMap}
+          oneBasedDevQuarters={oneBasedDevQuarters}
+        />
       </div>
     );
   } catch (error) {
