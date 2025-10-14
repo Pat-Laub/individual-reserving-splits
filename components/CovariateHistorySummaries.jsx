@@ -84,7 +84,7 @@ function CovariateHistorySummaries({
     return out;
   })();
 
-  // Estimated remaining (inflation-adjusted to observation quarter)
+  // Incurred (estimator's assessment of remaining liability, inflation-adjusted to observation quarter)
   const adjustedIncrements = (() => {
     const obsQ = getQuarterInfo(endDate, claimInfo.accidentDate);
     const targetPI = priceIndexMap ? priceIndexMap[obsQ.quarterKey] : null;
@@ -111,7 +111,33 @@ function CovariateHistorySummaries({
   })();
 
   const ultimateAdj = cumulativeAdj[cumulativeAdj.length - 1] || 0;
-  const remainingAdj = cumulativeAdj.map(c => Math.max(0, ultimateAdj - c));
+  
+  // Calculate true outstanding liability (unknowable in practice)
+  const trueOutstanding = cumulativeAdj.map(c => Math.max(0, ultimateAdj - c));
+  
+  // Generate incurred estimates with realistic estimation error
+  // Incurred should be correlated with but different from true outstanding
+  const remainingAdj = React.useMemo(() => {
+    // Use claim ID to seed the noise generation for consistency
+    const claimSeed = claimInfo.claimId ? claimInfo.claimId.charCodeAt(claimInfo.claimId.length - 1) : 42;
+    
+    return trueOutstanding.map((trueValue, idx) => {
+      if (trueValue === 0) return 0; // If truly settled, estimator knows it's settled
+      
+      // Generate estimation error that's correlated with development
+      // Early estimates tend to have more error, later estimates are more accurate
+      const progress = idx / Math.max(1, trueOutstanding.length - 1);
+      const baseErrorPct = 0.25 * (1 - progress * 0.7); // 25% error early, 7.5% error late
+      
+      // Deterministic "random" noise based on claim and development period
+      const noiseSeed = claimSeed * 1000 + idx;
+      const pseudoRandom = (Math.sin(noiseSeed) * 10000) % 1;
+      const errorMultiplier = 1 + baseErrorPct * (2 * pseudoRandom - 1);
+      
+      // Apply error and ensure non-negative
+      return Math.max(0, trueValue * errorMultiplier);
+    });
+  }, [claimInfo.claimId, ultimateAdj, JSON.stringify(cumulativeAdj)]);
 
   // Summary stats up to cutoff
   const statsUpTo = (arr, endIdx) => {
@@ -137,16 +163,17 @@ function CovariateHistorySummaries({
   // Use inflation-adjusted values for all stats
   const incStats = statsUpTo(adjustedIncrements, cutoffIndex);
   const cumStats = statsUpTo(cumulativeAdj, cutoffIndex);
-  const remStats = statsUpTo(remainingAdj, cutoffIndex);
+  const remStats = statsUpTo(remainingAdj, cutoffIndex); // Incurred estimates (with error)
+  const trueOutstandingStats = statsUpTo(trueOutstanding, cutoffIndex); // True outstanding (target)
+
+  // Check if outstanding liability is zero (claim is settled)
+  const isZeroOutstanding = Math.round(trueOutstandingStats.last * 100) === 0;
 
   // Labels
   const devLabels = devRange.map(dq => byDev[dq]?.quarterKey || `Q${dispQ(dq)}`);
   const cutoffQuarterKey = byDev[cutoffDevQ]?.quarterKey;
   const earliestQuarterKey = byDev[minDevQ]?.quarterKey;
   const latestQuarterKey = byDev[maxDevQ]?.quarterKey;
-
-  // Check if outstanding liability is zero (claim is settled)
-  const isZeroOutstanding = Math.round(remStats.last * 100) === 0;
 
   const Spark = window.PlotlySpark;
 
@@ -307,10 +334,10 @@ function CovariateHistorySummaries({
                   </div>
                 </div>
 
-                {/* Estimated remaining (adjusted line) */}
+                {/* Incurred */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs text-gray-600">Estimated remaining liability</div>
+                    <div className="text-xs text-gray-600">Incurred</div>
                   </div>
                   <Spark kind="line" values={remainingAdj} labels={devLabels} cutoffIndex={cutoffIndex} height={110} currency />
                   <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
@@ -383,16 +410,16 @@ function CovariateHistorySummaries({
                     <td className="px-3 py-2 text-right">{formatCurrency ? formatCurrency(cumStats.last) : cumStats.last.toFixed(2)}</td>
                   </tr>
                   <tr className="border-t">
-                    <td className="px-3 py-2 font-mono">est_remaining_last_qk</td>
+                    <td className="px-3 py-2 font-mono">incurred_last_qk</td>
                     <td className="px-3 py-2">Time‑series</td>
-                    <td className="px-3 py-2">Last observed ≤ cutoff</td>
+                    <td className="px-3 py-2">Incurred (last observed ≤ cutoff)</td>
                     <td className="px-3 py-2 text-right text-red-700">{formatCurrency ? formatCurrency(remStats.last) : remStats.last.toFixed(2)}</td>
                   </tr>
                   <tr className="border-t-2 border-indigo-300 bg-indigo-50">
                     <td className="px-3 py-2 font-mono font-bold">outstanding_liability</td>
                     <td className="px-3 py-2 font-bold">Target</td>
                     <td className="px-3 py-2">Remaining at cutoff (actual)</td>
-                    <td className="px-3 py-2 text-right font-bold text-indigo-900">{formatCurrency ? formatCurrency(remStats.last) : remStats.last.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right font-bold text-indigo-900">{formatCurrency ? formatCurrency(trueOutstandingStats.last) : trueOutstandingStats.last.toFixed(2)}</td>
                   </tr>
                 </tbody>
               </table>

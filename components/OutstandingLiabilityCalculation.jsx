@@ -24,7 +24,37 @@ function OutstandingLiabilityCalculation({
         </button>
       </div>
       {show && (
-        (() => {
+        <>
+          {/* Terminology */}
+          <div className="mb-4 text-sm text-gray-700">
+            <div className="font-semibold text-green-900 mb-2">📖 Key Terminology</div>
+            <div className="space-y-2">
+              <div>
+                <span className="font-semibold">Ultimate:</span> The total amount that will be paid out for a claim over its entire lifetime (from notification to settlement). 
+                This is only known once the claim is fully settled.
+              </div>
+              
+              <div>
+                <span className="font-semibold">Incurred (Case Estimates):</span> A case estimator's best estimate of the remaining liability for a claim, at a given point in time before settlement. 
+                This is a <strong>time series</strong> as multiple estimates are made as the claim develops. 
+                These estimates are correlated with the true outstanding but contain estimation error, with earlier estimates typically being less accurate than later ones.
+              </div>
+              
+              <div>
+                <span className="font-semibold">Outstanding Claim Liability (Target Variable):</span> The true amount which is remaining to be paid out for a claim. 
+                This is <strong>unknowable</strong> at any time before settlement. 
+                This is the <strong>target variable</strong> for our prediction task—what we're trying to predict.
+              </div>
+
+              <div className="text-xs italic text-gray-600">
+                Note: Both Incurred and Outstanding are also called "Case Estimates" in the actuarial literature, 
+                but since the distinction between the <em>estimates</em> (incurred) and the <em>true value</em> (outstanding) 
+                is key to our prediction task, we avoid that term as it can be confusing/misleading.
+              </div>
+            </div>
+          </div>
+
+          {(() => {
           const observationQuarterKey = getQuarterInfo(endDate, claimInfo.accidentDate).quarterKey;
           const targetPI = priceIndexMap ? priceIndexMap[observationQuarterKey] : null;
 
@@ -76,7 +106,8 @@ function OutstandingLiabilityCalculation({
               </div>
             </>
           );
-        })()
+        })()}
+      </>
       )}
     </div>
   );
