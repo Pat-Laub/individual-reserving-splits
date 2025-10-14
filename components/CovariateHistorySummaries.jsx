@@ -320,7 +320,7 @@ function CovariateHistorySummaries({
 
           {/* Final "features as-of cutoff" table */}
           <div className="bg-white rounded border p-3 mt-4">
-            <div className="text-xs font-medium text-gray-700 mb-2">Training Features (as‑of Dev Q{dispQ(cutoffDevQ)})</div>
+            <div className="text-xs font-medium text-gray-700 mb-2">Training Row (as‑of Dev Q{dispQ(cutoffDevQ)})</div>
             <div className="overflow-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
@@ -373,6 +373,12 @@ function CovariateHistorySummaries({
                     <td className="px-3 py-2">Time‑series (adj.)</td>
                     <td className="px-3 py-2">Last observed ≤ cutoff</td>
                     <td className="px-3 py-2 text-right text-red-700">{formatCurrency ? formatCurrency(remStats.last) : remStats.last.toFixed(2)}</td>
+                  </tr>
+                  <tr className="border-t-2 border-indigo-300 bg-indigo-50">
+                    <td className="px-3 py-2 font-mono font-bold">outstanding_liability</td>
+                    <td className="px-3 py-2 font-bold">Target</td>
+                    <td className="px-3 py-2">Remaining at cutoff (actual)</td>
+                    <td className="px-3 py-2 text-right font-bold text-indigo-900">{formatCurrency ? formatCurrency(remStats.last) : remStats.last.toFixed(2)}</td>
                   </tr>
                 </tbody>
               </table>
