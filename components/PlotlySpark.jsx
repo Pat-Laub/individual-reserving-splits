@@ -50,6 +50,7 @@ function PlotlySpark({
           line: { color: lineColors, width: 1 } 
         },
         text,
+        textposition: 'none', // Don't show text on bars
         hovertemplate: '%{text}<extra></extra>'
       }];
     } else {
