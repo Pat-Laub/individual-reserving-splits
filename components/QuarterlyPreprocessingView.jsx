@@ -124,6 +124,16 @@ function QuarterlyPreprocessingView({
             oneBasedDevQuarters={oneBasedDevQuarters}
           />
         </div>
+
+        <div id="neural-network-preprocessing">
+          <NeuralNetworkPreprocessing
+            claimData={claimData}
+            endDate={endDate}
+            priceIndexMap={priceIndexMap}
+            midQuarterIndexMap={midQuarterIndexMap}
+            oneBasedDevQuarters={oneBasedDevQuarters}
+          />
+        </div>
       </div>
     );
   } catch (err) {

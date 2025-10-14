@@ -15,6 +15,7 @@ function PreprocessingStepsOverview({ hasInflationAdjustment }) {
     { id: 'outstanding-liability', label: 'Outstanding Liability', step: hasInflationAdjustment ? 5 : 4 },
     { id: 'development-period', label: 'Training Rows', step: hasInflationAdjustment ? 6 : 5 },
     { id: 'covariate-history', label: 'Covariate History', step: hasInflationAdjustment ? 7 : 6 },
+    { id: 'neural-network-preprocessing', label: 'Neural Network Prep', step: hasInflationAdjustment ? 8 : 7 },
   ];
 
   // Scroll to section
