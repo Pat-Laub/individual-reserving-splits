@@ -168,6 +168,11 @@ function InflationAdjustment({
               </div>
             </div>
           </div>
+
+          <div className="mt-4 p-3 bg-orange-100 border border-orange-300 rounded text-sm text-orange-900">
+            <strong>Note:</strong> From this point forward, all dollar amounts are inflation-adjusted to {getQuarterInfo(endDate, claimInfo.accidentDate).quarterKey}. 
+            The nominal (unadjusted) values are discarded and no longer displayed.
+          </div>
         </>
       )}
     </div>

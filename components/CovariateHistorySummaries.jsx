@@ -258,7 +258,7 @@ function CovariateHistorySummaries({
                 {/* Incremental payments (bar) */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs text-gray-600">Incremental payments (inflation‑adjusted to {getQuarterInfo(endDate, claimInfo.accidentDate).quarterKey})</div>
+                    <div className="text-xs text-gray-600">Incremental payments</div>
                   </div>
                   <Spark kind="bar" values={adjustedIncrements} labels={devLabels} cutoffIndex={cutoffIndex} height={110} currency />
                   <div className="grid grid-cols-4 gap-2 mt-2 text-xs">
@@ -284,7 +284,7 @@ function CovariateHistorySummaries({
                 {/* Cumulative paid (line) */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs text-gray-600">Cumulative paid to date (inflation‑adjusted to {getQuarterInfo(endDate, claimInfo.accidentDate).quarterKey})</div>
+                    <div className="text-xs text-gray-600">Cumulative paid to date</div>
                   </div>
                   <Spark kind="line" values={cumulativeAdj} labels={devLabels} cutoffIndex={cutoffIndex} height={110} currency />
                   <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
@@ -310,9 +310,7 @@ function CovariateHistorySummaries({
                 {/* Estimated remaining (adjusted line) */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs text-gray-600">
-                      Estimated remaining (inflation‑adjusted to {getQuarterInfo(endDate, claimInfo.accidentDate).quarterKey})
-                    </div>
+                    <div className="text-xs text-gray-600">Estimated remaining liability</div>
                   </div>
                   <Spark kind="line" values={remainingAdj} labels={devLabels} cutoffIndex={cutoffIndex} height={110} currency />
                   <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
@@ -323,7 +321,7 @@ function CovariateHistorySummaries({
                       </div>
                     </div>
                     <div className="bg-gray-50 border rounded p-2">
-                      <div className="text-gray-600">Ultimate (adj)</div>
+                      <div className="text-gray-600">Ultimate</div>
                       <div className="font-medium">
                         {formatCurrency ? formatCurrency(ultimateAdj) : ultimateAdj.toFixed(2)}
                       </div>
@@ -361,32 +359,32 @@ function CovariateHistorySummaries({
                     <td className="px-3 py-2 text-right font-mono">{legalRepLatest ?? 'NA'}</td>
                   </tr>
                   <tr className="border-t">
-                    <td className="px-3 py-2 font-mono">inc_paid_adj_mean_q1..k</td>
-                    <td className="px-3 py-2">Time‑series (adj.)</td>
+                    <td className="px-3 py-2 font-mono">inc_paid_mean_q1..k</td>
+                    <td className="px-3 py-2">Time‑series</td>
                     <td className="px-3 py-2">Mean of increments ≤ cutoff</td>
                     <td className="px-3 py-2 text-right">{formatCurrency ? formatCurrency(incStats.mean) : incStats.mean.toFixed(2)}</td>
                   </tr>
                   <tr className="border-t">
-                    <td className="px-3 py-2 font-mono">inc_paid_adj_max_q1..k</td>
-                    <td className="px-3 py-2">Time‑series (adj.)</td>
+                    <td className="px-3 py-2 font-mono">inc_paid_max_q1..k</td>
+                    <td className="px-3 py-2">Time‑series</td>
                     <td className="px-3 py-2">Max of increments ≤ cutoff</td>
                     <td className="px-3 py-2 text-right">{formatCurrency ? formatCurrency(incStats.max) : incStats.max.toFixed(2)}</td>
                   </tr>
                   <tr className="border-t">
-                    <td className="px-3 py-2 font-mono">inc_paid_adj_sd_q1..k</td>
-                    <td className="px-3 py-2">Time‑series (adj.)</td>
+                    <td className="px-3 py-2 font-mono">inc_paid_sd_q1..k</td>
+                    <td className="px-3 py-2">Time‑series</td>
                     <td className="px-3 py-2">Std dev of increments ≤ cutoff</td>
                     <td className="px-3 py-2 text-right">{formatCurrency ? formatCurrency(incStats.sd) : incStats.sd.toFixed(2)}</td>
                   </tr>
                   <tr className="border-t">
-                    <td className="px-3 py-2 font-mono">cum_paid_adj_last_qk</td>
-                    <td className="px-3 py-2">Time‑series (adj.)</td>
+                    <td className="px-3 py-2 font-mono">cum_paid_last_qk</td>
+                    <td className="px-3 py-2">Time‑series</td>
                     <td className="px-3 py-2">Last observed ≤ cutoff</td>
                     <td className="px-3 py-2 text-right">{formatCurrency ? formatCurrency(cumStats.last) : cumStats.last.toFixed(2)}</td>
                   </tr>
                   <tr className="border-t">
-                    <td className="px-3 py-2 font-mono">est_remaining_adj_last_qk</td>
-                    <td className="px-3 py-2">Time‑series (adj.)</td>
+                    <td className="px-3 py-2 font-mono">est_remaining_last_qk</td>
+                    <td className="px-3 py-2">Time‑series</td>
                     <td className="px-3 py-2">Last observed ≤ cutoff</td>
                     <td className="px-3 py-2 text-right text-red-700">{formatCurrency ? formatCurrency(remStats.last) : remStats.last.toFixed(2)}</td>
                   </tr>
