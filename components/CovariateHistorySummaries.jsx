@@ -191,6 +191,12 @@ function CovariateHistorySummaries({
 
       {show && (
         <>
+          <div className="text-xs text-indigo-800 mb-3 bg-indigo-100 p-2 rounded">
+            <strong>Note:</strong> The slider below lets you select a specific <em>training row</em> from this claim. 
+            Recall that each claim generates multiple training rows (one for each development quarter). 
+            Moving the slider changes which training row we're examining.
+          </div>
+
           {/* Control row */}
           <div className="bg-white rounded border p-3 mb-4">
             <div className="flex flex-col md:flex-row md:items-center md:gap-4">
