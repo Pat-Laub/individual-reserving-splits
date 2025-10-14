@@ -32,7 +32,13 @@ function CovariateHistorySummaries({
     [qSorted]
   );
 
-  const [cutoffDevQ, setCutoffDevQ] = React.useState(maxDevQ);
+  // Set default cutoff to middle of range to avoid settled (zero outstanding) quarters
+  const defaultCutoffDevQ = React.useMemo(
+    () => Math.floor((minDevQ + maxDevQ) / 2),
+    [minDevQ, maxDevQ]
+  );
+
+  const [cutoffDevQ, setCutoffDevQ] = React.useState(defaultCutoffDevQ);
 
   const dispQ = (dq) => oneBasedDevQuarters ? dq + 1 : dq;
   const toRange = (start, end) =>
@@ -139,6 +145,9 @@ function CovariateHistorySummaries({
   const earliestQuarterKey = byDev[minDevQ]?.quarterKey;
   const latestQuarterKey = byDev[maxDevQ]?.quarterKey;
 
+  // Check if outstanding liability is zero (claim is settled)
+  const isZeroOutstanding = Math.round(remStats.last * 100) === 0;
+
   const Spark = window.PlotlySpark;
 
   return (
@@ -178,6 +187,13 @@ function CovariateHistorySummaries({
                 <span className="font-mono bg-gray-100 px-1 rounded">{cutoffQuarterKey || '-'}</span>
               </div>
             </div>
+            {isZeroOutstanding && (
+              <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-800">
+                <strong>⚠️ Warning:</strong> The outstanding liability at this cutoff is $0.00. 
+                In practice, training rows with zero outstanding would be <em>discarded</em> before model training 
+                (as noted in the "Development Period & Training Row Generation" section).
+              </div>
+            )}
           </div>
 
           <div className="grid lg:grid-cols-2 gap-4">
