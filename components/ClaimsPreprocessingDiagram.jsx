@@ -156,35 +156,38 @@ function ClaimsPreprocessingDiagram() {
           before they are used in machine learning models for reserving.
         </div>
 
-        {/* Claim Selection Interface */}
-        <div className='mb-6 p-4 bg-gray-50 rounded-lg border'>
-          <div className='text-sm font-medium mb-3'>Select a Claim for Detailed Analysis:</div>
-          <div className='flex flex-wrap gap-2'>
-            {claims
-              .slice(0, Math.min(20, claims.length))
-              .map((claim, index) => ({ claim, originalIndex: index }))
-              .sort((a, b) => a.claim.staticCovariates.claimId.localeCompare(
-                b.claim.staticCovariates.claimId,
-                undefined,
-                { numeric: true }
-              ))
-              .map(({ claim, originalIndex }) => (
-                <button
-                  key={originalIndex}
-                  onClick={() => setSelectedClaimIndex(originalIndex)}
-                  className={`px-3 py-2 rounded text-xs font-medium transition-colors ${selectedClaimIndex === originalIndex
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                    }`}
-                >
-                  {claim.staticCovariates.claimId}
-                </button>
-              ))}
+        {/* Claim Selection Interface - Sticky */}
+        {selectedClaim && (
+          <div className='sticky top-0 z-50 w-full mb-6 p-3 bg-gray-50 rounded-lg border shadow-md'>
+            <div className='flex items-center justify-between gap-4'>
+              <button
+                onClick={() => setSelectedClaimIndex((prev) => (prev > 0 ? prev - 1 : claims.length - 1))}
+                className='px-3 py-2 rounded bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors'
+                title='Previous claim'
+              >
+                ← Prev
+              </button>
+              <div className='flex-1 text-center'>
+                <div className='text-sm font-medium'>
+                  Claim {selectedClaimIndex + 1} of {claims.length}
+                  <span className='text-gray-500 font-normal ml-2'>
+                    ({selectedClaim.staticCovariates.claimId})
+                  </span>
+                </div>
+                <div className='text-xs text-gray-600 mt-1'>
+                  Use Prev/Next buttons to navigate between claims
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedClaimIndex((prev) => (prev < claims.length - 1 ? prev + 1 : 0))}
+                className='px-3 py-2 rounded bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors'
+                title='Next claim'
+              >
+                Next →
+              </button>
+            </div>
           </div>
-          <div className='text-xs text-gray-600 mt-2'>
-            Dataset split: Settlement date mode (claims grouped by their settlement date)
-          </div>
-        </div>
+        )}
 
         {/* Quarterly Preprocessing Section */}
         <div className='w-full max-w-6xl mx-auto p-4'>

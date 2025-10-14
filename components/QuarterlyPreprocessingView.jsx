@@ -55,60 +55,75 @@ function QuarterlyPreprocessingView({
 
         <PreprocessingStepsOverview hasInflationAdjustment={hasInflationAdjustment} />
 
-        <StaticCovariates claimInfo={claimInfo} />
+        <div id="static-covariates">
+          <StaticCovariates claimInfo={claimInfo} />
+        </div>
 
-        <ContinuousTimeline claimInfo={claimInfo} selectedClaim={selectedClaim} />
+        <div id="continuous-timeline">
+          <ContinuousTimeline claimInfo={claimInfo} selectedClaim={selectedClaim} />
+        </div>
 
-        <PaymentDetails
-          claimInfo={claimInfo}
-          selectedClaim={selectedClaim}
-          oneBasedDevQuarters={oneBasedDevQuarters}
-          showPaymentDetails={showPaymentDetails}
-          setShowPaymentDetails={setShowPaymentDetails}
-        />
+        <div id="payment-details">
+          <PaymentDetails
+            claimInfo={claimInfo}
+            selectedClaim={selectedClaim}
+            oneBasedDevQuarters={oneBasedDevQuarters}
+            showPaymentDetails={showPaymentDetails}
+            setShowPaymentDetails={setShowPaymentDetails}
+          />
+        </div>
 
-        <QuarterlyAggregation
-          quarters={quarters}
-          showQuarterlyAggregation={showQuarterlyAggregation}
-          setShowQuarterlyAggregation={setShowQuarterlyAggregation}
-        />
+        <div id="quarterly-aggregation">
+          <QuarterlyAggregation
+            quarters={quarters}
+            showQuarterlyAggregation={showQuarterlyAggregation}
+            setShowQuarterlyAggregation={setShowQuarterlyAggregation}
+          />
+        </div>
 
         {hasInflationAdjustment && (
-          <InflationAdjustment
+          <div id="inflation-adjustment">
+            <InflationAdjustment
+              quarters={quarters}
+              claimInfo={claimInfo}
+              endDate={endDate}
+              priceIndexMap={priceIndexMap}
+              priceIndexSeries={priceIndexSeries}
+              midQuarterIndexMap={midQuarterIndexMap}
+            />
+          </div>
+        )}
+
+        <div id="outstanding-liability">
+          <OutstandingLiabilityCalculation
             quarters={quarters}
             claimInfo={claimInfo}
             endDate={endDate}
             priceIndexMap={priceIndexMap}
-            priceIndexSeries={priceIndexSeries}
             midQuarterIndexMap={midQuarterIndexMap}
           />
-        )}
+        </div>
 
-        <OutstandingLiabilityCalculation
-          quarters={quarters}
-          claimInfo={claimInfo}
-          endDate={endDate}
-          priceIndexMap={priceIndexMap}
-          midQuarterIndexMap={midQuarterIndexMap}
-        />
+        <div id="development-period">
+          <DevelopmentPeriodGeneration
+            claimInfo={claimInfo}
+            quarters={quarters}
+            endDate={endDate}
+            oneBasedDevQuarters={oneBasedDevQuarters}
+            priceIndexMap={priceIndexMap}
+            midQuarterIndexMap={midQuarterIndexMap}
+          />
+        </div>
 
-        <DevelopmentPeriodGeneration
-          claimInfo={claimInfo}
-          quarters={quarters}
-          endDate={endDate}
-          oneBasedDevQuarters={oneBasedDevQuarters}
-          priceIndexMap={priceIndexMap}
-          midQuarterIndexMap={midQuarterIndexMap}
-        />
-
-        {/* NEW: Feature summarisation with Plotly sparks */}
-        <CovariateHistorySummaries
-          claimData={claimData}
-          endDate={endDate}
-          priceIndexMap={priceIndexMap}
-          midQuarterIndexMap={midQuarterIndexMap}
-          oneBasedDevQuarters={oneBasedDevQuarters}
-        />
+        <div id="covariate-history">
+          <CovariateHistorySummaries
+            claimData={claimData}
+            endDate={endDate}
+            priceIndexMap={priceIndexMap}
+            midQuarterIndexMap={midQuarterIndexMap}
+            oneBasedDevQuarters={oneBasedDevQuarters}
+          />
+        </div>
       </div>
     );
   } catch (err) {
