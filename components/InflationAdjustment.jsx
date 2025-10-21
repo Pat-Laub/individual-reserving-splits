@@ -13,6 +13,27 @@ function InflationAdjustment({
   const { getQuarterInfo, formatCurrency } = window.utils;
   const [show, setShow] = React.useState(true);
 
+  // NEW: Build end-of-quarter WPI: w[t] = sqrt( w(t) * w(t+1) ) from quarter-averages w(t)
+  const eoqIndexMap = React.useMemo(() => {
+    if (!priceIndexSeries || !priceIndexMap) return null;
+    const m = {};
+    for (let i = 0; i < priceIndexSeries.length - 1; i++) {
+      const qk = priceIndexSeries[i].quarterKey;
+      const nextQk = priceIndexSeries[i + 1].quarterKey;
+      const wCurr = priceIndexMap[qk];
+      const wNext = priceIndexMap[nextQk];
+      if (wCurr != null && wNext != null) {
+        m[qk] = Math.sqrt(wCurr * wNext);
+      }
+    }
+    // Fallback for the last quarter (no look-ahead available)
+    const last = priceIndexSeries[priceIndexSeries.length - 1];
+    if (last && priceIndexMap[last.quarterKey] != null) {
+      m[last.quarterKey] = priceIndexMap[last.quarterKey];
+    }
+    return m;
+  }, [priceIndexSeries, priceIndexMap]);
+
   return (
     <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
       <div className="flex items-center justify-between mb-3">
@@ -30,37 +51,40 @@ function InflationAdjustment({
             We typically make all the monetary values be in terms of today's money, or at least in terms of the currency's worth at the final quarter in the dataset.
           </div>
           <div className="text-sm text-orange-800 mb-3">
-            Because quarterly aggregation loses exact payment dates, we assume payments occur at the <strong>middle</strong> of each quarter.
-            The index we use at mid‑quarter is the geometric mean of neighbouring end‑of‑quarter indices:
-            <span className="ml-1 font-mono bg-orange-100 px-1 rounded">PI<sub>mid</sub>(q) = √[ PI<sub>eoq</sub>(q−1) · PI<sub>eoq</sub>(q) ]</span>.
-            The adjustment becomes <span className="font-mono bg-orange-100 px-1 rounded">AdjFactor(q) = PI<sub>eoq</sub>(target) / PI<sub>mid</sub>(q)</span>.
+            The published WPI <span className="font-mono">w(t)</span> measures wages over the whole quarter <span className="font-mono">t</span> (survey at mid‑quarter).
+            To align everything to the valuation date (end of target quarter <span className="font-mono">T</span>), we compute an end‑of‑quarter series
+            <span className="ml-1 font-mono bg-orange-100 px-1 rounded">w[t] = √( w(t) · w(t+1) )</span>.
+            Payments in quarter <span className="font-mono">t</span> inflate by
+            <span className="ml-1 font-mono bg-orange-100 px-1 rounded">w[T] / w(t)</span>;
+            case estimates held at quarter‑end inflate by
+            <span className="ml-1 font-mono bg-orange-100 px-1 rounded">w[T] / w[t]</span>.
           </div>
 
           {/* Price Index chart: plot end-of-quarter (line) and mid-quarter (dots) */}
           <div className="bg-white rounded border p-3 mb-4">
-            <div className="text-xs font-medium text-gray-700 mb-2">Price Index (End-of-Quarter vs Mid-Quarter)</div>
+            <div className="text-xs font-medium text-gray-700 mb-2">WPI: Quarter vs End‑of‑Quarter</div>
             {(() => {
               if (!priceIndexSeries || priceIndexSeries.length === 0) return <div className="text-xs text-gray-500">No index data.</div>;
               const w = 720, h = 180, pad = 32;
-              const xs = priceIndexSeries.map(p => p.index);
-              // Build mid series from map
-              const midMap = midQuarterIndexMap || {};
-              const midSeries = priceIndexSeries.map(p => ({ quarterKey: p.quarterKey, index: midMap[p.quarterKey] || p.index }));
+              // Quarter-averages w(t)
+              const quarterSeries = priceIndexSeries.map(p => ({ quarterKey: p.quarterKey, index: priceIndexMap[p.quarterKey] ?? p.index }));
+              // End-of-quarter w[t]
+              const eoqSeries = priceIndexSeries.map(p => ({ quarterKey: p.quarterKey, index: (eoqIndexMap && eoqIndexMap[p.quarterKey]) ?? priceIndexMap[p.quarterKey] ?? p.index }));
 
-              const minY = Math.min(Math.min(...xs), Math.min(...midSeries.map(p => p.index))) * 0.98;
-              const maxY = Math.max(Math.max(...xs), Math.max(...midSeries.map(p => p.index))) * 1.02;
-              const n = priceIndexSeries.length;
+              const minY = Math.min(Math.min(...quarterSeries.map(p => p.index)), Math.min(...eoqSeries.map(p => p.index))) * 0.98;
+              const maxY = Math.max(Math.max(...quarterSeries.map(p => p.index)), Math.max(...eoqSeries.map(p => p.index))) * 1.02;
+              const n = quarterSeries.length;
               const xScale = (i) => pad + (i / (n - 1)) * (w - 2 * pad);
               const yScale = (v) => h - pad - ((v - minY) / (maxY - minY)) * (h - 2 * pad);
-              const linePath = priceIndexSeries.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i)} ${yScale(p.index)}`).join(' ');
+              const linePath = quarterSeries.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i)} ${yScale(p.index)}`).join(' ');
 
               return (
                 <svg width="100%" viewBox={`0 0 ${w} ${h}`}>
                   <rect x="0" y="0" width={w} height={h} fill="#ffffff" />
-                  {/* EoQ line */}
+                  {/* Quarter WPI line */}
                   <path d={linePath} fill="none" stroke="#f59e0b" strokeWidth="2" />
-                  {/* Mid-quarter dots */}
-                  {midSeries.map((p, i) => (
+                  {/* End-of-quarter dots */}
+                  {eoqSeries.map((p, i) => (
                     <circle key={i} cx={xScale(i)} cy={yScale(p.index)} r="2.5" fill="#1d4ed8" />
                   ))}
                   {/* axes */}
@@ -70,7 +94,7 @@ function InflationAdjustment({
                   <text x={pad} y={pad - 8} fontSize="10" fill="#6b7280">Index</text>
                   <text x={pad} y={h - 8} fontSize="10" fill="#6b7280">{priceIndexSeries[0].quarterKey}</text>
                   <text x={w - pad} y={h - 8} fontSize="10" textAnchor="end" fill="#6b7280">{priceIndexSeries[priceIndexSeries.length - 1].quarterKey}</text>
-                  <text x={w - pad} y={pad} fontSize="10" textAnchor="end" fill="#6b7280">Orange: EoQ line • Blue: Mid‑Q</text>
+                  <text x={w - pad} y={pad} fontSize="10" textAnchor="end" fill="#6b7280">Orange: Quarter w(t) • Blue: EOQ w[t]</text>
                 </svg>
               )
             })()}
@@ -79,36 +103,39 @@ function InflationAdjustment({
           <div className="grid md:grid-cols-2 gap-4">
             {/* Index values & factors for used quarters */}
             <div>
-              <div className="text-xs font-medium text-orange-800 mb-2">Adjusting payments for inflation</div>
+              <div className="text-xs font-medium text-orange-800 mb-2">Quarter & EOQ values and adjustment factors</div>
               <div className="bg-white rounded border overflow-hidden">
                 <table className="w-full text-xs">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-2 py-1 text-left font-medium">Source Quarter</th>
-                      <th className="px-2 py-1 text-right font-medium">PI<sub>eoq</sub>(source)</th>
-                      <th className="px-2 py-1 text-right font-medium">PI<sub>mid</sub>(source)</th>
+                      <th className="px-2 py-1 text-right font-medium">w(t) source</th>
+                      <th className="px-2 py-1 text-right font-medium">w[t] source</th>
                       <th className="px-2 py-1 text-left font-medium">Target Quarter</th>
-                      <th className="px-2 py-1 text-right font-medium">PI<sub>eoq</sub>(target)</th>
-                      <th className="px-2 py-1 text-right font-medium">Adj Factor</th>
+                      <th className="px-2 py-1 text-right font-medium">w[T] target</th>
+                      <th className="px-2 py-1 text-right font-medium">Payments: w[T]/w(t)</th>
+                      <th className="px-2 py-1 text-right font-medium">Case est.: w[T]/w[t]</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(() => {
                       const usedQs = [...new Set(quarters.map(q => q.quarterKey))].sort();
                       const targetQuarterKey = getQuarterInfo(endDate, claimInfo.accidentDate).quarterKey;
-                      const targetPI = priceIndexMap ? priceIndexMap[targetQuarterKey] : null;
+                      const targetEOQ = eoqIndexMap ? eoqIndexMap[targetQuarterKey] : null;
                       return usedQs.map((qk, i) => {
-                        const srcPI_eoq = priceIndexMap ? priceIndexMap[qk] : null;
-                        const srcPI_mid = (midQuarterIndexMap && midQuarterIndexMap[qk]) ? midQuarterIndexMap[qk] : srcPI_eoq;
-                        const factor = (srcPI_mid && targetPI) ? (targetPI / srcPI_mid) : 1.0;
+                        const srcQuarter = priceIndexMap ? priceIndexMap[qk] : null; // w(t)
+                        const srcEOQ = eoqIndexMap ? eoqIndexMap[qk] : (srcQuarter ?? null); // w[t]
+                        const payFactor = (srcQuarter && targetEOQ) ? (targetEOQ / srcQuarter) : 1.0;
+                        const caseFactor = (srcEOQ && targetEOQ) ? (targetEOQ / srcEOQ) : 1.0;
                         return (
                           <tr key={i} className="border-t border-gray-100">
                             <td className="px-2 py-1 font-mono">{qk}</td>
-                            <td className="px-2 py-1 text-right font-mono">{srcPI_eoq ? srcPI_eoq.toFixed(2) : '-'}</td>
-                            <td className="px-2 py-1 text-right font-mono">{srcPI_mid ? srcPI_mid.toFixed(2) : '-'}</td>
+                            <td className="px-2 py-1 text-right font-mono">{srcQuarter ? srcQuarter.toFixed(2) : '-'}</td>
+                            <td className="px-2 py-1 text-right font-mono">{srcEOQ ? srcEOQ.toFixed(2) : '-'}</td>
                             <td className="px-2 py-1 font-mono">{targetQuarterKey}</td>
-                            <td className="px-2 py-1 text-right font-mono">{targetPI ? targetPI.toFixed(2) : '-'}</td>
-                            <td className="px-2 py-1 text-right font-mono">{factor.toFixed(4)}</td>
+                            <td className="px-2 py-1 text-right font-mono">{targetEOQ ? targetEOQ.toFixed(2) : '-'}</td>
+                            <td className="px-2 py-1 text-right font-mono">{payFactor.toFixed(4)}</td>
+                            <td className="px-2 py-1 text-right font-mono">{caseFactor.toFixed(4)}</td>
                           </tr>
                         );
                       });
@@ -136,9 +163,9 @@ function InflationAdjustment({
                     {quarters.map((quarter, i) => {
                       const calendarQuarterKey = quarter.quarterKey;
                       const targetQuarterKey = getQuarterInfo(endDate, claimInfo.accidentDate).quarterKey;
-                      const targetPI = priceIndexMap ? priceIndexMap[targetQuarterKey] : null;
-                      const srcPI_mid = (midQuarterIndexMap && midQuarterIndexMap[calendarQuarterKey]) ? midQuarterIndexMap[calendarQuarterKey] : (priceIndexMap ? priceIndexMap[calendarQuarterKey] : null);
-                      const displayFactor = (srcPI_mid && targetPI) ? (targetPI / srcPI_mid) : 1.0;
+                      const targetEOQ = eoqIndexMap ? eoqIndexMap[targetQuarterKey] : null; // w[T]
+                      const srcQuarter = priceIndexMap ? priceIndexMap[calendarQuarterKey] : null; // w(t)
+                      const displayFactor = (srcQuarter && targetEOQ) ? (targetEOQ / srcQuarter) : 1.0; // payments factor
                       const adjustedSum = (quarter.nominalAmount || quarter.totalAmount) * displayFactor;
 
                       if (quarter.paymentCount === 0) {
